@@ -23,6 +23,10 @@ export default function Layout() {
             <Calendar size={20} style={{ marginRight: '10px' }} />
             Leave Management
           </Link>
+          <Link to="/payroll" className={`nav-link ${location.pathname === '/payroll' ? 'active' : ''}`}>
+            <UserCheck size={20} style={{ marginRight: '10px' }} />
+            Payroll
+          </Link>
           <Link to="/profile" className={`nav-link ${location.pathname === '/profile' ? 'active' : ''}`}>
             <UserCheck size={20} style={{ marginRight: '10px' }} />
             Profile

@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import LeaveManagement from './pages/LeaveManagement';
+import Payroll from './pages/Payroll';
 
 function App() {
   return (
@@ -12,7 +14,8 @@ function App() {
         {/* Protected Routes inside Layout */}
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
-          <Route path="leaves" element={<div className="card"><h2>Leave Management</h2><p>Leave module UI goes here...</p></div>} />
+          <Route path="leaves" element={<LeaveManagement />} />
+          <Route path="payroll" element={<Payroll />} />
           <Route path="profile" element={<div className="card"><h2>Profile Details</h2><p>Employee profile details...</p></div>} />
         </Route>
         
