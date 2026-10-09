@@ -18,6 +18,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
+import com.zidio.nexushr.common.event.NotificationEvent;
 
 @Service
 public class LeaveService {
@@ -26,15 +28,18 @@ public class LeaveService {
     private final LeaveBalanceRepository leaveBalanceRepository;
     private final EmployeeRepository employeeRepository;
     private final LeaveMapper leaveMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public LeaveService(LeaveRepository leaveRepository,
                         LeaveBalanceRepository leaveBalanceRepository,
                         EmployeeRepository employeeRepository,
-                        LeaveMapper leaveMapper) {
+                        LeaveMapper leaveMapper,
+                        ApplicationEventPublisher eventPublisher) {
         this.leaveRepository = leaveRepository;
         this.leaveBalanceRepository = leaveBalanceRepository;
         this.employeeRepository = employeeRepository;
         this.leaveMapper = leaveMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -105,8 +110,22 @@ public class LeaveService {
         if (approve) {
             leave.setStatus("APPROVED");
             deductLeaveBalance(leave);
+            
+            eventPublisher.publishEvent(NotificationEvent.builder()
+                .recipientEmail(leave.getEmployee().getEmail())
+                .subject("Leave Request Approved")
+                .message("Your leave request from " + leave.getStartDate() + " to " + leave.getEndDate() + " has been approved.")
+                .sendEmail(true)
+                .build());
         } else {
             leave.setStatus("REJECTED");
+            
+            eventPublisher.publishEvent(NotificationEvent.builder()
+                .recipientEmail(leave.getEmployee().getEmail())
+                .subject("Leave Request Rejected")
+                .message("Your leave request from " + leave.getStartDate() + " to " + leave.getEndDate() + " has been rejected.")
+                .sendEmail(true)
+                .build());
         }
 
         leave = leaveRepository.save(leave);
