@@ -2,15 +2,25 @@ package com.zidio.nexushr.employee.mapper;
 
 import com.zidio.nexushr.employee.dto.AttendanceDto;
 import com.zidio.nexushr.employee.entity.Attendance;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.factory.Mappers;
+import org.springframework.stereotype.Component;
 
-@Mapper(componentModel = "spring")
-public interface AttendanceMapper {
-    AttendanceMapper INSTANCE = Mappers.getMapper(AttendanceMapper.class);
+@Component
+public class AttendanceMapper {
+    public static final AttendanceMapper INSTANCE = new AttendanceMapper();
 
-    @Mapping(source = "employee.id", target = "employeeId")
-    @Mapping(target = "employeeName", expression = "java(attendance.getEmployee().getFirstName() + ' ' + attendance.getEmployee().getLastName())")
-    AttendanceDto toDto(Attendance attendance);
+    public AttendanceDto toDto(Attendance attendance) {
+        if (attendance == null) return null;
+        AttendanceDto dto = new AttendanceDto();
+        dto.setId(attendance.getId());
+        dto.setDate(attendance.getDate());
+        dto.setClockIn(attendance.getClockIn());
+        dto.setClockOut(attendance.getClockOut());
+        dto.setStatus(attendance.getStatus());
+        dto.setWorkHours(attendance.getWorkHours());
+        if (attendance.getEmployee() != null) {
+            dto.setEmployeeId(attendance.getEmployee().getId());
+            dto.setEmployeeName(attendance.getEmployee().getFirstName() + " " + attendance.getEmployee().getLastName());
+        }
+        return dto;
+    }
 }

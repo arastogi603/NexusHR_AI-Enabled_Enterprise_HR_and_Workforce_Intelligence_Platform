@@ -52,13 +52,23 @@ public class LeaveController {
         return ResponseEntity.ok(leaveService.getPendingLeavesForManager(authentication.getName()));
     }
 
-    @PutMapping("/{id}/approve")
+    @GetMapping("/pending")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<List<LeaveDto>> getPendingLeaves(Authentication authentication) {
+        boolean isAdmin = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().contains("ADMIN"));
+        if (isAdmin) {
+            return ResponseEntity.ok(leaveService.getAllPendingLeaves());
+        }
+        return ResponseEntity.ok(leaveService.getPendingLeavesForManager(authentication.getName()));
+    }
+
+    @RequestMapping(value = "/{id}/approve", method = {RequestMethod.PUT, RequestMethod.POST})
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<LeaveDto> approveLeave(Authentication authentication, @PathVariable UUID id) {
         return ResponseEntity.ok(leaveService.processLeaveRequest(authentication.getName(), id, true));
     }
 
-    @PutMapping("/{id}/reject")
+    @RequestMapping(value = "/{id}/reject", method = {RequestMethod.PUT, RequestMethod.POST})
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<LeaveDto> rejectLeave(Authentication authentication, @PathVariable UUID id) {
         return ResponseEntity.ok(leaveService.processLeaveRequest(authentication.getName(), id, false));

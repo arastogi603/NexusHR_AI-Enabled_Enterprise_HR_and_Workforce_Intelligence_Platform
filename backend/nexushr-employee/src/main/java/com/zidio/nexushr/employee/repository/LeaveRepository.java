@@ -25,4 +25,6 @@ public interface LeaveRepository extends JpaRepository<Leave, UUID> {
                                       
     List<Leave> findByEmployeeDepartmentIdAndStartDateLessThanEqualAndEndDateGreaterThanEqualAndStatus(
             UUID departmentId, LocalDate date1, LocalDate date2, String status);
+
+    List<Leave> findByStatus(String status);
 }

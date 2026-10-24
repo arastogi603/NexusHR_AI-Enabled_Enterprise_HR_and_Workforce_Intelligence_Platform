@@ -2,17 +2,33 @@ package com.zidio.nexushr.employee.mapper;
 
 import com.zidio.nexushr.employee.dto.EmployeeDto;
 import com.zidio.nexushr.employee.entity.Employee;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.factory.Mappers;
+import org.springframework.stereotype.Component;
 
-@Mapper(componentModel = "spring")
-public interface EmployeeMapper {
-    EmployeeMapper INSTANCE = Mappers.getMapper(EmployeeMapper.class);
+@Component
+public class EmployeeMapper {
+    public static final EmployeeMapper INSTANCE = new EmployeeMapper();
 
-    @Mapping(source = "department.id", target = "departmentId")
-    @Mapping(source = "department.name", target = "departmentName")
-    @Mapping(source = "manager.id", target = "managerId")
-    @Mapping(target = "managerName", expression = "java(employee.getManager() != null ? employee.getManager().getFirstName() + ' ' + employee.getManager().getLastName() : null)")
-    EmployeeDto toDto(Employee employee);
+    public EmployeeDto toDto(Employee employee) {
+        if (employee == null) return null;
+        EmployeeDto dto = new EmployeeDto();
+        dto.setId(employee.getId());
+        dto.setEmployeeCode(employee.getEmployeeCode());
+        dto.setFirstName(employee.getFirstName());
+        dto.setLastName(employee.getLastName());
+        dto.setEmail(employee.getEmail());
+        dto.setPhone(employee.getPhone());
+        dto.setDesignation(employee.getDesignation());
+        dto.setStatus(employee.getStatus());
+        dto.setHireDate(employee.getHireDate());
+        dto.setSalary(employee.getSalary());
+        if (employee.getDepartment() != null) {
+            dto.setDepartmentId(employee.getDepartment().getId());
+            dto.setDepartmentName(employee.getDepartment().getName());
+        }
+        if (employee.getManager() != null) {
+            dto.setManagerId(employee.getManager().getId());
+            dto.setManagerName(employee.getManager().getFirstName() + " " + employee.getManager().getLastName());
+        }
+        return dto;
+    }
 }

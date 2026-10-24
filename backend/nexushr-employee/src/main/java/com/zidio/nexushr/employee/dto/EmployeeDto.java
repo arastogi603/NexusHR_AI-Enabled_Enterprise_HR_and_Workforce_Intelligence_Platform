@@ -21,4 +21,6 @@ public class EmployeeDto {
     private UUID managerId;
     private String managerName;
     private BigDecimal salary;
+    private String provisionalPassword;
+    private String metadata;
 }

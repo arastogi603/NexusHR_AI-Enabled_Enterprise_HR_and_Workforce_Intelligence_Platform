@@ -2,20 +2,34 @@ package com.zidio.nexushr.employee.mapper;
 
 import com.zidio.nexushr.employee.dto.DepartmentDto;
 import com.zidio.nexushr.employee.entity.Department;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.factory.Mappers;
+import org.springframework.stereotype.Component;
 
-@Mapper(componentModel = "spring")
-public interface DepartmentMapper {
-    DepartmentMapper INSTANCE = Mappers.getMapper(DepartmentMapper.class);
+@Component
+public class DepartmentMapper {
+    public static final DepartmentMapper INSTANCE = new DepartmentMapper();
 
-    @Mapping(source = "head.id", target = "headId")
-    @Mapping(target = "headName", expression = "java(department.getHead() != null ? department.getHead().getFirstName() + ' ' + department.getHead().getLastName() : null)")
-    @Mapping(source = "parent.id", target = "parentId")
-    DepartmentDto toDto(Department department);
+    public DepartmentDto toDto(Department department) {
+        if (department == null) return null;
+        DepartmentDto dto = new DepartmentDto();
+        dto.setId(department.getId());
+        dto.setName(department.getName());
+        dto.setDescription(department.getDescription());
+        if (department.getHead() != null) {
+            dto.setHeadId(department.getHead().getId());
+            dto.setHeadName(department.getHead().getFirstName() + " " + department.getHead().getLastName());
+        }
+        if (department.getParent() != null) {
+            dto.setParentId(department.getParent().getId());
+        }
+        return dto;
+    }
 
-    @Mapping(target = "head", ignore = true)
-    @Mapping(target = "parent", ignore = true)
-    Department toEntity(DepartmentDto departmentDto);
+    public Department toEntity(DepartmentDto dto) {
+        if (dto == null) return null;
+        Department dept = new Department();
+        dept.setId(dto.getId());
+        dept.setName(dto.getName());
+        dept.setDescription(dto.getDescription());
+        return dept;
+    }
 }

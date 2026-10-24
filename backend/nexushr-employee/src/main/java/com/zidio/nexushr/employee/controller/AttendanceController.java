@@ -58,4 +58,10 @@ public class AttendanceController {
         LocalDate queryDate = date != null ? date : LocalDate.now();
         return ResponseEntity.ok(attendanceService.getDepartmentAttendance(departmentId, queryDate));
     }
+
+    @GetMapping("/my-team")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<List<AttendanceDto>> getMyTeamAttendanceToday(Authentication authentication) {
+        return ResponseEntity.ok(attendanceService.getTeamAttendanceToday(authentication.getName()));
+    }
 }

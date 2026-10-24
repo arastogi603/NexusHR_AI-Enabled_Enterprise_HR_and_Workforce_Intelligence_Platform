@@ -16,4 +16,12 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
     Optional<Employee> findByUserId(UUID userId);
     Page<Employee> findByDepartmentIdAndStatus(UUID departmentId, String status, Pageable pageable);
     Page<Employee> findByStatus(String status, Pageable pageable);
+    long countByDepartmentId(UUID departmentId);
+    long countByDepartmentIdAndStatus(UUID departmentId, String status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT e FROM Employee e WHERE e.manager.id = :managerId")
+    java.util.List<Employee> findByManagerId(@org.springframework.data.repository.query.Param("managerId") UUID managerId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT e FROM Employee e WHERE e.department.id = :departmentId")
+    java.util.List<Employee> findByDepartmentId(@org.springframework.data.repository.query.Param("departmentId") UUID departmentId);
 }

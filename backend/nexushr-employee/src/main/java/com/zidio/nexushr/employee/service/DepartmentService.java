@@ -43,7 +43,7 @@ public class DepartmentService {
     @Transactional
     public DepartmentDto createDepartment(DepartmentDto request) {
         if (departmentRepository.findByName(request.getName()).isPresent()) {
-            throw new RuntimeException("Department with name already exists");
+            throw new com.zidio.nexushr.common.exception.DuplicateResourceException("Department with name '" + request.getName() + "' already exists");
         }
 
         Department department = new Department();
@@ -97,7 +97,12 @@ public class DepartmentService {
     @Transactional
     public void deleteDepartment(UUID id) {
         if (!departmentRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Department not found");
+            throw new ResourceNotFoundException("Department not found with id: " + id);
+        }
+        long employeeCount = employeeRepository.countByDepartmentId(id);
+        if (employeeCount > 0) {
+            throw new com.zidio.nexushr.common.exception.BusinessRuleException(
+                    "Cannot delete department because " + employeeCount + " employee(s) are assigned to it. Please reassign them first.");
         }
         departmentRepository.deleteById(id);
     }
