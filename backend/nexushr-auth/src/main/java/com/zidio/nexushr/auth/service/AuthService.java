@@ -54,10 +54,22 @@ public class AuthService {
     }
 
     public AuthResponse login(AuthRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(request.getEmail().toLowerCase())
                 .orElseThrow(() -> new RuntimeException("Invalid email or password"));
 
+        // Check if locked
+        if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(java.time.LocalDateTime.now())) {
+            long remainingMinutes = java.time.Duration.between(java.time.LocalDateTime.now(), user.getLockedUntil()).toMinutes() + 1;
+            throw new RuntimeException("Account is temporarily locked due to 5 failed attempts. Please retry in " + remainingMinutes + " minutes.");
+        }
+
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            int attempts = user.getFailedAttempts() + 1;
+            user.setFailedAttempts(attempts);
+            if (attempts >= 5) {
+                user.setLockedUntil(java.time.LocalDateTime.now().plusMinutes(15));
+            }
+            userRepository.save(user);
             throw new RuntimeException("Invalid email or password");
         }
         
@@ -65,7 +77,30 @@ public class AuthService {
             throw new RuntimeException("Account is disabled");
         }
 
+        // Reset failed attempts on successful login
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
+        user.setLastLoginAt(java.time.LocalDateTime.now());
+        userRepository.save(user);
+
         return generateAuthResponse(user);
+    }
+
+    public void changePassword(String email, String currentPassword, String newPassword) {
+        User user = userRepository.findByEmail(email.toLowerCase())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new RuntimeException("Current password does not match");
+        }
+
+        if (newPassword == null || newPassword.length() < 10) {
+            throw new RuntimeException("New password must be at least 10 characters long");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
     }
 
     public AuthResponse refreshToken(String refreshToken) {
@@ -86,10 +121,12 @@ public class AuthService {
     }
 
     public void logout(String accessToken, String refreshToken) {
-        // Blacklist tokens (we assume front-end passes them in request headers or body)
-        // Set expiry equivalent to token valid duration for simplicity
-        tokenBlacklistService.blacklistToken(accessToken, 900000); // 15 mins
-        tokenBlacklistService.blacklistToken(refreshToken, 604800000); // 7 days
+        if (accessToken != null && !accessToken.isBlank()) {
+            tokenBlacklistService.blacklistToken(accessToken, 900000); // 15 mins
+        }
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            tokenBlacklistService.blacklistToken(refreshToken, 604800000); // 7 days
+        }
     }
 
     private AuthResponse generateAuthResponse(User user) {
@@ -97,14 +134,29 @@ public class AuthService {
                 .map(Role::getName)
                 .collect(Collectors.toList());
 
+        String primaryRole = roles.stream()
+                .filter(r -> r.equals("ROLE_SUPER_ADMIN") || r.equals("ROLE_ADMIN") || r.equals("ROLE_MANAGER") || r.equals("ROLE_EXECUTIVE"))
+                .findFirst()
+                .orElse(roles.isEmpty() ? "ROLE_EMPLOYEE" : roles.get(0));
+        String shortRole = primaryRole.replace("ROLE_", "");
+
         String accessToken = jwtUtils.generateAccessToken(user.getEmail(), roles);
         String refreshToken = jwtUtils.generateRefreshToken(user.getEmail());
+
+        String defaultName = user.getEmail().split("@")[0];
+        String formattedName = java.util.Arrays.stream(defaultName.split("[._]"))
+                .map(s -> s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase())
+                .collect(Collectors.joining(" "));
 
         return AuthResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .email(user.getEmail())
                 .roles(roles)
+                .role(shortRole)
+                .name(formattedName)
+                .mustChangePassword(user.isMustChangePassword())
+                .expiresIn(900000L)
                 .build();
     }
 }

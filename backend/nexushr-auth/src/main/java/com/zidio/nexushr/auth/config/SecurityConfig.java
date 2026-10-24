@@ -31,7 +31,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/signup", "/api/v1/auth/refresh").permitAll()
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                .requestMatchers("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -43,5 +43,15 @@ public class SecurityConfig {
     public PasswordEncoder passwordEncoder() {
         // Use Argon2 for password hashing as specified
         return Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();
+    }
+
+    @Bean
+    public org.springframework.security.access.hierarchicalroles.RoleHierarchy roleHierarchy() {
+        return org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl.fromHierarchy(
+            "ROLE_SUPER_ADMIN > ROLE_ADMIN \n" +
+            "ROLE_ADMIN > ROLE_EMPLOYEE \n" +
+            "ROLE_MANAGER > ROLE_EMPLOYEE \n" +
+            "ROLE_EXECUTIVE > ROLE_EMPLOYEE"
+        );
     }
 }

@@ -16,4 +16,8 @@ public class AuthResponse {
     private String refreshToken;
     private String email;
     private List<String> roles;
+    private String role;
+    private String name;
+    private boolean mustChangePassword;
+    private long expiresIn;
 }
