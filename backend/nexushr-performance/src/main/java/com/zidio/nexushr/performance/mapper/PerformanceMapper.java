@@ -4,21 +4,45 @@ import com.zidio.nexushr.performance.dto.GoalDto;
 import com.zidio.nexushr.performance.dto.PerformanceReviewDto;
 import com.zidio.nexushr.performance.entity.Goal;
 import com.zidio.nexushr.performance.entity.PerformanceReview;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.factory.Mappers;
+import org.springframework.stereotype.Component;
 
-@Mapper(componentModel = "spring")
-public interface PerformanceMapper {
-    PerformanceMapper INSTANCE = Mappers.getMapper(PerformanceMapper.class);
+@Component
+public class PerformanceMapper {
+    public static final PerformanceMapper INSTANCE = new PerformanceMapper();
 
-    @Mapping(source = "employee.id", target = "employeeId")
-    @Mapping(target = "employeeName", expression = "java(goal.getEmployee() != null ? goal.getEmployee().getFirstName() + ' ' + goal.getEmployee().getLastName() : null)")
-    GoalDto toGoalDto(Goal goal);
+    public GoalDto toGoalDto(Goal goal) {
+        if (goal == null) return null;
+        GoalDto dto = new GoalDto();
+        dto.setId(goal.getId());
+        dto.setTitle(goal.getTitle());
+        dto.setDescription(goal.getDescription());
+        dto.setStartDate(goal.getStartDate());
+        dto.setEndDate(goal.getEndDate());
+        dto.setCompletionPercentage(goal.getCompletionPercentage());
+        dto.setStatus(goal.getStatus());
+        if (goal.getEmployee() != null) {
+            dto.setEmployeeId(goal.getEmployee().getId());
+            dto.setEmployeeName(goal.getEmployee().getFirstName() + " " + goal.getEmployee().getLastName());
+        }
+        return dto;
+    }
 
-    @Mapping(source = "employee.id", target = "employeeId")
-    @Mapping(target = "employeeName", expression = "java(review.getEmployee() != null ? review.getEmployee().getFirstName() + ' ' + review.getEmployee().getLastName() : null)")
-    @Mapping(source = "reviewer.id", target = "reviewerId")
-    @Mapping(target = "reviewerName", expression = "java(review.getReviewer() != null ? review.getReviewer().getFirstName() + ' ' + review.getReviewer().getLastName() : null)")
-    PerformanceReviewDto toReviewDto(PerformanceReview review);
+    public PerformanceReviewDto toReviewDto(PerformanceReview review) {
+        if (review == null) return null;
+        PerformanceReviewDto dto = new PerformanceReviewDto();
+        dto.setId(review.getId());
+        dto.setReviewPeriod(review.getReviewPeriod());
+        dto.setScore(review.getScore());
+        dto.setFeedback(review.getFeedback());
+        dto.setStatus(review.getStatus());
+        if (review.getEmployee() != null) {
+            dto.setEmployeeId(review.getEmployee().getId());
+            dto.setEmployeeName(review.getEmployee().getFirstName() + " " + review.getEmployee().getLastName());
+        }
+        if (review.getReviewer() != null) {
+            dto.setReviewerId(review.getReviewer().getId());
+            dto.setReviewerName(review.getReviewer().getFirstName() + " " + review.getReviewer().getLastName());
+        }
+        return dto;
+    }
 }

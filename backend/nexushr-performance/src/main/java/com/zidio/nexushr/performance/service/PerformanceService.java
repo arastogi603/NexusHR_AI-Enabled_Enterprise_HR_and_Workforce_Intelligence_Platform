@@ -42,7 +42,7 @@ public class PerformanceService {
         Employee employee = employeeRepository.findById(request.getEmployeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
-        if (!employee.getManager().getId().equals(manager.getId())) {
+        if (employee.getManager() != null && !employee.getManager().getId().equals(manager.getId()) && !employee.getId().equals(manager.getId())) {
             throw new RuntimeException("Unauthorized: Can only create goals for direct reports");
         }
 
@@ -52,6 +52,8 @@ public class PerformanceService {
         goal.setDescription(request.getDescription());
         goal.setStartDate(request.getStartDate());
         goal.setEndDate(request.getEndDate());
+        goal.setStatus(request.getStatus() != null ? request.getStatus() : "IN_PROGRESS");
+        goal.setCompletionPercentage(request.getCompletionPercentage() != null ? request.getCompletionPercentage() : 0);
         
         goal = goalRepository.save(goal);
         return mapper.toGoalDto(goal);
@@ -89,7 +91,7 @@ public class PerformanceService {
         Employee employee = employeeRepository.findById(request.getEmployeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
-        if (!employee.getManager().getId().equals(reviewer.getId())) {
+        if (employee.getManager() != null && !employee.getManager().getId().equals(reviewer.getId()) && !employee.getId().equals(reviewer.getId())) {
             throw new RuntimeException("Unauthorized: Can only review direct reports");
         }
 
