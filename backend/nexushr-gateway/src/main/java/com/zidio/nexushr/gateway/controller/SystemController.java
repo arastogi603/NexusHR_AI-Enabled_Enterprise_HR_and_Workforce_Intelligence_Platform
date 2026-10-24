@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/system")
 public class SystemController {
 
     private final DemoDataSeeder demoDataSeeder;
@@ -17,7 +16,16 @@ public class SystemController {
         this.demoDataSeeder = demoDataSeeder;
     }
 
-    @PostMapping("/demo/reset")
+    @GetMapping({"/", "/health", "/api/v1/health", "/api/v1/system/health"})
+    public ResponseEntity<Map<String, Object>> getHealth() {
+        return ResponseEntity.ok(Map.of(
+                "status", "UP",
+                "service", "NexusHR Enterprise Platform",
+                "timestamp", System.currentTimeMillis()
+        ));
+    }
+
+    @PostMapping("/api/v1/system/demo/reset")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<Map<String, Object>> resetDemoData() {
         demoDataSeeder.seedData();
@@ -27,12 +35,12 @@ public class SystemController {
         ));
     }
 
-    @GetMapping("/config")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @GetMapping({"/api/v1/system/config", "/api/v1/config"})
     public ResponseEntity<Map<String, Object>> getSystemConfig() {
         return ResponseEntity.ok(Map.of(
+                "status", "UP",
                 "version", "2.0.0-PROD",
-                "environment", "demo",
+                "environment", "production",
                 "statutoryRegime", "FY 2025-26 New Tax Regime (Section 115BAC)",
                 "timezone", "Asia/Kolkata",
                 "realtimeEngine", "STOMP WebSocket with Redis Pub/Sub",

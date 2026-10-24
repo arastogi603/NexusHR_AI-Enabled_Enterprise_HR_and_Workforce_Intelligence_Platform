@@ -47,8 +47,19 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler({
+        IllegalArgumentException.class,
+        IllegalStateException.class
+    })
+    public ResponseEntity<Map<String, Object>> handleBadRequest(RuntimeException ex) {
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGlobalException(Exception ex) {
+        if (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("invalid email or password")) {
+            return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        }
         return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
     }
 

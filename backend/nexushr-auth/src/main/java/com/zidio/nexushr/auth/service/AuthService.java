@@ -8,6 +8,7 @@ import com.zidio.nexushr.auth.entity.Role;
 import com.zidio.nexushr.auth.entity.User;
 import com.zidio.nexushr.auth.repository.RoleRepository;
 import com.zidio.nexushr.auth.repository.UserRepository;
+import com.zidio.nexushr.common.exception.BusinessRuleException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,11 +38,11 @@ public class AuthService {
     @Transactional
     public AuthResponse signup(SignupRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email is already in use");
+            throw new BusinessRuleException("Email is already in use");
         }
 
         Role userRole = roleRepository.findByName("ROLE_EMPLOYEE")
-                .orElseThrow(() -> new RuntimeException("Default role not found"));
+                .orElseThrow(() -> new BusinessRuleException("Default role not found"));
 
         User user = new User();
         user.setEmail(request.getEmail());
@@ -55,12 +56,12 @@ public class AuthService {
 
     public AuthResponse login(AuthRequest request) {
         User user = userRepository.findByEmail(request.getEmail().toLowerCase())
-                .orElseThrow(() -> new RuntimeException("Invalid email or password"));
+                .orElseThrow(() -> new BusinessRuleException("Invalid email or password"));
 
         // Check if locked
         if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(java.time.LocalDateTime.now())) {
             long remainingMinutes = java.time.Duration.between(java.time.LocalDateTime.now(), user.getLockedUntil()).toMinutes() + 1;
-            throw new RuntimeException("Account is temporarily locked due to 5 failed attempts. Please retry in " + remainingMinutes + " minutes.");
+            throw new BusinessRuleException("Account is temporarily locked due to 5 failed attempts. Please retry in " + remainingMinutes + " minutes.");
         }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
@@ -70,11 +71,11 @@ public class AuthService {
                 user.setLockedUntil(java.time.LocalDateTime.now().plusMinutes(15));
             }
             userRepository.save(user);
-            throw new RuntimeException("Invalid email or password");
+            throw new BusinessRuleException("Invalid email or password");
         }
         
         if (!user.isActive()) {
-            throw new RuntimeException("Account is disabled");
+            throw new BusinessRuleException("Account is disabled");
         }
 
         // Reset failed attempts on successful login

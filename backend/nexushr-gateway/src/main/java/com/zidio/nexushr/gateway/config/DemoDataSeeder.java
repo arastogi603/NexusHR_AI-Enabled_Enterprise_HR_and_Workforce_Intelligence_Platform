@@ -114,6 +114,14 @@ public class DemoDataSeeder implements CommandLineRunner {
             userRepository.save(adminCorp);
         }
 
+        // Ensure admin@nexushr.com with Admin@123
+        if (!userRepository.existsByEmail("admin@nexushr.com")) {
+            User adminCom = ensureUser("admin@nexushr.com", passwordEncoder.encode("Admin@123"), roleSuperAdmin);
+            adminCom.getRoles().add(roleAdmin);
+            adminCom.getRoles().add(roleManager);
+            userRepository.save(adminCom);
+        }
+
         // Seed Pending Leave Requests for Aditi (so Vikram has pending items in his manager queue)
         seedPendingLeaves(aditiEmp);
 
