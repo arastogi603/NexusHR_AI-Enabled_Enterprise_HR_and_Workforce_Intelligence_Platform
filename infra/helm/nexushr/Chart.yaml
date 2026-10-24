@@ -1,0 +1,9 @@
+apiVersion: v2
+name: nexushr
+description: Enterprise Helm chart for NexusHR Platform (Spring Boot + Next.js + PostgreSQL + Redis)
+type: application
+version: 1.0.0
+appVersion: "2.0.0"
+maintainers:
+  - name: NexusHR Core Team
+    email: devops@nexushr.corp

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nexushr
+  labels:
+    app.kubernetes.io/name: nexushr
+    app.kubernetes.io/part-of: nexushr-platform

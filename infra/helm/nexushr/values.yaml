@@ -1,0 +1,59 @@
+# Default values for nexushr Helm Chart
+
+replicaCount:
+  backend: 2
+  frontend: 2
+
+image:
+  backend:
+    repository: ghcr.io/nexushr/backend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: ghcr.io/nexushr/frontend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+service:
+  backend:
+    type: ClusterIP
+    port: 8080
+  frontend:
+    type: ClusterIP
+    port: 3000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  host: "nexushr.demo"
+  tls: true
+  secretName: "nexushr-tls"
+
+autoscaling:
+  backend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+resources:
+  backend:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+  frontend:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+env:
+  springProfile: "prod"
+  timezone: "Asia/Kolkata"
+  corsOrigins: "https://nexushr.demo,http://localhost:3000"
+  aiProvider: "RULES"

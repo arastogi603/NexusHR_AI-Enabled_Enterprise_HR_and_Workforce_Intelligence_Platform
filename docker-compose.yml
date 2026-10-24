@@ -1,0 +1,3 @@
+# NexusHR Root Docker Compose (Full Stack Orchestration)
+include:
+  - infra/compose/docker-compose.full.yml

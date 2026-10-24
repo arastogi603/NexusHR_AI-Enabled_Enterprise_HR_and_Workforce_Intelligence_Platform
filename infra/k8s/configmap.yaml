@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexushr-config
+  namespace: nexushr
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  APP_TIMEZONE: "Asia/Kolkata"
+  CORS_ALLOWED_ORIGINS: "https://nexushr.demo,http://localhost:3000"
+  AI_PROVIDER: "RULES"
+  STORAGE_TYPE: "minio"
+  S3_BUCKET: "nexushr-documents"
+  S3_ENDPOINT: "http://minio:9000"
+  MAIL_HOST: "mailhog"
+  MAIL_PORT: "1025"
+  MAIL_FROM: "notifications@nexushr.corp"
+  API_GATEWAY_URL: "http://nexushr-backend:8080"
+  NEXT_PUBLIC_WS_URL: "wss://nexushr.demo/ws"
