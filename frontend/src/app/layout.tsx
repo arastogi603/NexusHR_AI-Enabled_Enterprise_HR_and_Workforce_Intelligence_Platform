@@ -10,6 +10,7 @@ import "./globals.css";
 
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { NexusAiChatWidget } from "@/components/ai/NexusAiChatWidget";
+import { PageTransition } from "@/components/layout/PageTransition";
 
 const poppins = Poppins({
   weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
@@ -70,7 +71,9 @@ export default function RootLayout({
               <div className="big-glass-frame flex-1 w-full lg:w-auto min-h-[calc(100dvh-100px)] lg:h-full lg:max-h-[calc(100vh-16px)] rounded-[24px] sm:rounded-[34px] lg:rounded-[42px] flex flex-col overflow-hidden relative shadow-2xl">
                 {/* Main Content inside the big glass box - Scrollable on mobile, static on desktop */}
                 <div className="flex-1 w-full h-full flex flex-col overflow-y-auto lg:overflow-hidden p-2.5 sm:p-3.5 lg:p-4.5 box-border">
-                  {children}
+                  <PageTransition>
+                    {children}
+                  </PageTransition>
                 </div>
               </div>
 

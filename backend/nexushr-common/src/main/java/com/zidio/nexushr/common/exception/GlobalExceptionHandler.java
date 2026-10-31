@@ -57,7 +57,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGlobalException(Exception ex) {
-        if (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("invalid email or password")) {
+        if (ex.getClass().getName().contains("AccessDeniedException")) {
+            return buildErrorResponse(HttpStatus.FORBIDDEN, "Access Denied: Insufficient permissions for this resource");
+        }
+        if (ex.getClass().getName().contains("AuthenticationException") ||
+            (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("invalid email or password"))) {
             return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage());
         }
         return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());

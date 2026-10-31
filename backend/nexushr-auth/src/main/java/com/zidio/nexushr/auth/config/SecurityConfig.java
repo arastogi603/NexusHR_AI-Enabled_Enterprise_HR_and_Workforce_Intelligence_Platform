@@ -45,6 +45,18 @@ public class SecurityConfig {
                 ).permitAll()
                 .anyRequest().authenticated()
             )
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Authentication required or token expired\",\"status\":401}");
+                })
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":\"Forbidden\",\"message\":\"Access Denied: Insufficient privileges\",\"status\":403}");
+                })
+            )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -73,9 +85,11 @@ public class SecurityConfig {
     public org.springframework.security.access.hierarchicalroles.RoleHierarchy roleHierarchy() {
         return org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl.fromHierarchy(
             "ROLE_SUPER_ADMIN > ROLE_ADMIN \n" +
-            "ROLE_ADMIN > ROLE_EMPLOYEE \n" +
+            "ROLE_ADMIN > ROLE_MANAGER \n" +
+            "ROLE_ADMIN > ROLE_EXECUTIVE \n" +
             "ROLE_MANAGER > ROLE_EMPLOYEE \n" +
-            "ROLE_EXECUTIVE > ROLE_EMPLOYEE"
+            "ROLE_EXECUTIVE > ROLE_EMPLOYEE \n" +
+            "ROLE_ADMIN > ROLE_EMPLOYEE"
         );
     }
 }

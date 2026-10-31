@@ -195,17 +195,11 @@ export default function AnalyticsPage() {
             <BrainCircuit className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-                Workforce Intelligence & AI
-              </h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                <Sparkles className="w-3 h-3" />
-                M7 Verified
-              </span>
-            </div>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+              Workforce Intelligence & Analytics
+            </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Predictive Attrition Matrix • Skill-Gap Heatmap • Engagement Telemetry • Zero External Leak Engine
+              Predictive workforce insights and skill distribution analytics.
             </p>
           </div>
         </div>

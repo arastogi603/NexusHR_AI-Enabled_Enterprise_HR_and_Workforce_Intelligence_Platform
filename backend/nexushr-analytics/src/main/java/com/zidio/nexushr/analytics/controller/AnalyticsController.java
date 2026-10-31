@@ -24,7 +24,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/dashboard")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'MANAGER', 'EXECUTIVE')")
     public ResponseEntity<DashboardDto> getDashboardMetrics() {
         return ResponseEntity.ok(dashboardService.getAdminDashboardMetrics());
     }

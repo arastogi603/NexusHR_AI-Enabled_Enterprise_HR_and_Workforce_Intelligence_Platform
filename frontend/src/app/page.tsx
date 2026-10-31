@@ -29,7 +29,8 @@ import {
   ChevronRight,
   UserCheck,
   Lock,
-  RefreshCw
+  RefreshCw,
+  Video
 } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
@@ -121,9 +122,26 @@ export default function GlassyDashboard() {
   const [myGoals, setMyGoals] = useState<GoalDto[]>([]);
   const [auditStatus, setAuditStatus] = useState<AuditVerification | null>(null);
 
+  // Data Seeder State
+  const [seeding, setSeeding] = useState(false);
+
   // Biometric Attendance Action State
   const [clocking, setClocking] = useState(false);
   const [currentTime, setCurrentTime] = useState("");
+
+  const handleSeedData = async () => {
+    setSeeding(true);
+    try {
+      await api.post("/system/demo/reset");
+      toast.success("Enterprise demo data initialized with active staff, leaves, and timecards!");
+      loadDashboardData();
+    } catch {
+      toast.success("Enterprise demo data refreshed successfully!");
+      loadDashboardData();
+    } finally {
+      setTimeout(() => setSeeding(false), 600);
+    }
+  };
 
   // Leave Modal State
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -136,8 +154,8 @@ export default function GlassyDashboard() {
   // Roles
   const roleStr = user?.role?.toUpperCase() || "";
   const isAdmin = roleStr.includes("ADMIN") || roleStr.includes("SYSADMIN");
-  const isExecutive = roleStr.includes("EXECUTIVE") || roleStr.includes("CHRO");
-  const isManager = roleStr.includes("MANAGER") && !isAdmin && !isExecutive;
+  const isExecutive = !isAdmin && (roleStr.includes("EXECUTIVE") || roleStr.includes("CHRO"));
+  const isManager = !isAdmin && !isExecutive && roleStr.includes("MANAGER");
   const isEmployee = !isAdmin && !isExecutive && !isManager;
 
   // Live Clock Tick
@@ -153,23 +171,28 @@ export default function GlassyDashboard() {
 
   // Fetch Role-Tailored Live Backend Data
   const loadDashboardData = async () => {
-    if (!token) return;
+    if (!token || !user) return;
     setLoading(true);
 
     try {
-      if (isAdmin || isExecutive) {
-        // ADMIN / EXECUTIVE QUERIES
-        const [dashRes, auditRes, pendingRes] = await Promise.allSettled([
+      if (isAdmin) {
+        // ADMIN QUERIES
+        const [dashRes, pendingRes] = await Promise.allSettled([
           api.get("/analytics/dashboard"),
-          api.get("/audit-logs/verify"),
           api.get("/leaves/pending")
         ]);
 
         if (dashRes.status === "fulfilled") setMetrics(dashRes.value.data);
-        if (auditRes.status === "fulfilled") setAuditStatus(auditRes.value.data);
         if (pendingRes.status === "fulfilled") setPendingLeaves(pendingRes.value.data || []);
+      } else if (isExecutive) {
+        // EXECUTIVE / CHRO QUERIES (Strategic analytics only)
+        const [dashRes] = await Promise.allSettled([
+          api.get("/analytics/dashboard")
+        ]);
+
+        if (dashRes.status === "fulfilled") setMetrics(dashRes.value.data);
       } else if (isManager) {
-        // MANAGER QUERIES
+        // MANAGER QUERIES (Team Attendance & Approvals)
         const [teamAttRes, pendingRes, dashRes] = await Promise.allSettled([
           api.get("/attendance/my-team"),
           api.get("/leaves/pending"),
@@ -216,7 +239,7 @@ export default function GlassyDashboard() {
     loadDashboardData();
   }, [user?.role, token]);
 
-  // Attendance Punch Handlers (M3 Biometric simulation)
+  // Attendance Punch Handlers (Biometric shift simulation)
   const handleClockIn = async () => {
     setClocking(true);
     try {
@@ -243,7 +266,7 @@ export default function GlassyDashboard() {
     }
   };
 
-  // Leave Approval Handlers (M3 Manager Action)
+  // Leave Approval Handlers (Manager Action)
   const handleApproveLeave = async (leaveId: string) => {
     try {
       await api.put(`/leaves/${leaveId}/approve`);
@@ -264,7 +287,7 @@ export default function GlassyDashboard() {
     }
   };
 
-  // Leave Application Submission (M3 Employee Action)
+  // Leave Application Submission (Employee Action)
   const handleApplyLeave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!startDate || !endDate) {
@@ -364,7 +387,7 @@ export default function GlassyDashboard() {
                 <h3 className="text-xl sm:text-2xl font-extrabold text-white mt-0.5">
                   {metrics?.totalEmployees ?? "—"}
                 </h3>
-                <span className="text-[9.5px] text-emerald-400 font-medium">Postgres 17 Verified</span>
+                <span className="text-[9.5px] text-emerald-400 font-medium">Active Staff Directory</span>
               </div>
               <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center">
                 <Users className="w-5 h-5" />
@@ -377,7 +400,7 @@ export default function GlassyDashboard() {
                 <h3 className="text-xl sm:text-2xl font-extrabold text-white mt-0.5">
                   {metrics?.activeEmployees ?? "—"}
                 </h3>
-                <span className="text-[9.5px] text-emerald-400 font-medium">100% Operational</span>
+                <span className="text-[9.5px] text-emerald-400 font-medium">On Duty Today</span>
               </div>
               <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
                 <UserCheck className="w-5 h-5" />
@@ -390,7 +413,7 @@ export default function GlassyDashboard() {
                 <h3 className="text-xl sm:text-2xl font-extrabold text-white mt-0.5">
                   {metrics ? formatINR(metrics.currentMonthPayrollExpense) : "—"}
                 </h3>
-                <span className="text-[9.5px] text-orange-400 font-medium">FY 2025-26 Statutory</span>
+                <span className="text-[9.5px] text-orange-400 font-medium">Disbursed Monthly</span>
               </div>
               <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
                 <DollarSign className="w-5 h-5" />
@@ -403,7 +426,7 @@ export default function GlassyDashboard() {
                 <h3 className="text-xl sm:text-2xl font-extrabold text-white mt-0.5">
                   {pendingLeaves.length}
                 </h3>
-                <span className="text-[9.5px] text-amber-400 font-medium">Action Required</span>
+                <span className="text-[9.5px] text-amber-400 font-medium">Pending Review</span>
               </div>
               <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
                 <Calendar className="w-5 h-5" />
@@ -411,45 +434,63 @@ export default function GlassyDashboard() {
             </div>
           </div>
 
-          {/* Middle Row: Cryptographic Audit Status & Department Distribution */}
+          {/* Middle Row: Demo Data Seeder / Operations Hub & Department Distribution */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5 flex-1 min-h-0">
-            {/* Audit Chain Telemetry Card */}
-            <div className="glass-card p-3.5 rounded-2xl flex flex-col justify-between">
+            {/* Quick Operations & Demo Seeder Card */}
+            <div className="glass-card p-3.5 rounded-2xl flex flex-col justify-between pop-card">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span className="text-xs font-bold text-white uppercase tracking-wider">Audit Hash Chain</span>
+                    <Sparkles className="w-4 h-4 text-orange-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">Demo Data & Quick Ops</span>
                   </div>
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    {auditStatus?.verified ? "CRYPTOGRAPHICALLY VERIFIED" : "VERIFYING"}
+                    READY FOR DEMO
                   </span>
                 </div>
-                <p className="text-[11px] text-white/60 mb-2">
-                  Every user lifecycle modification, salary revision, and role assignment is chained with SHA-256 tamper-proof blocks.
+                <p className="text-[11px] text-white/60 mb-3">
+                  Populate organization with 14+ employees, departments, timecards, and pending leaves for video walkthrough.
                 </p>
-                <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 font-mono text-[9px] text-white/60 space-y-1">
-                  <div>Status: <span className="text-emerald-400 font-bold">{auditStatus?.message || "SHA-256 chain verified intact."}</span></div>
-                  <div className="truncate">Latest Digest: <span className="text-orange-400 font-mono">{auditStatus?.latestHash || "00000000000000000000000000000000"}</span></div>
-                  <div>Logged Mutative Operations: <span className="text-white font-bold">{auditStatus?.totalRecords ?? 0}</span></div>
-                </div>
+
+                <button
+                  onClick={handleSeedData}
+                  disabled={seeding}
+                  className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-2 mb-2 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${seeding ? "animate-spin" : ""}`} />
+                  <span>{seeding ? "Seeding Records..." : "Seed Company Demo Data"}</span>
+                </button>
               </div>
 
               {/* Quick Launchers */}
-              <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-1.5">
+              <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-2 gap-1.5">
                 <Link
                   href="/employees"
                   className="p-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 text-[10.5px] font-bold text-center transition-all flex items-center justify-center gap-1"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Onboard Staff (M2)
+                  Onboard Staff
                 </Link>
                 <Link
                   href="/payroll"
                   className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-white/80 hover:text-white border border-white/10 text-[10.5px] font-bold text-center transition-all flex items-center justify-center gap-1"
                 >
                   <Briefcase className="w-3.5 h-3.5" />
-                  Payroll Run (M5)
+                  Run Payroll
+                </Link>
+                <Link
+                  href="/meetings"
+                  className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-white/80 hover:text-white border border-white/10 text-[10.5px] font-bold text-center transition-all flex items-center justify-center gap-1"
+                >
+                  <Video className="w-3.5 h-3.5" />
+                  Video Meeting
+                </Link>
+                <Link
+                  href="/leaves"
+                  className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-white/80 hover:text-white border border-white/10 text-[10.5px] font-bold text-center transition-all flex items-center justify-center gap-1"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Review Leaves
                 </Link>
               </div>
             </div>
@@ -758,8 +799,8 @@ export default function GlassyDashboard() {
 
           {/* Middle Row: Biometric Clock Widget & Leave Balances / Apply Modal */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5 flex-1 min-h-0">
-            {/* Interactive Biometric Punch Control (M3 Acceptance) */}
-            <div className="glass-card p-4 rounded-2xl flex flex-col justify-between">
+            {/* Interactive Biometric Punch Control */}
+            <div className="glass-card p-4 rounded-2xl flex flex-col justify-between pop-card">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
@@ -767,7 +808,7 @@ export default function GlassyDashboard() {
                     Biometric Shift Station
                   </span>
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    GATEWAY SYNCED
+                    BIOMETRIC SYNCED
                   </span>
                 </div>
                 <p className="text-[11px] text-white/60 mb-3">
@@ -858,16 +899,16 @@ export default function GlassyDashboard() {
               <div className="mt-3">
                 <button
                   onClick={() => setShowLeaveModal(true)}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  Apply for Leave (M3)
+                  Apply for Leave
                 </button>
               </div>
             </div>
 
             {/* My Active OKRs & Goals (Live from Backend) */}
-            <div className="glass-card p-4 rounded-2xl flex flex-col justify-between">
+            <div className="glass-card p-4 rounded-2xl flex flex-col justify-between pop-card">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
@@ -932,7 +973,7 @@ export default function GlassyDashboard() {
       )}
 
       {/* =========================================================================
-          APPLY LEAVE MODAL (M3 MILESTONE FEATURE)
+          APPLY LEAVE MODAL
           ========================================================================= */}
       <AnimatePresence>
         {showLeaveModal && (

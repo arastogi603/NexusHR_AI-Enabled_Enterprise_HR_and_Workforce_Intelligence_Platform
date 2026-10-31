@@ -35,10 +35,19 @@ const processQueue = (error: any, token: string | null = null) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error?.config;
 
-    // Handle 401 Unauthorized
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Handle 401 Unauthorized or 403 Forbidden with expired / missing token
+    const isAuthExpired = error.response?.status === 401 ||
+      (error.response?.status === 403 && (
+        !localStorage.getItem('token') ||
+        error.response?.data?.message?.toLowerCase().includes("unauthorized") ||
+        error.response?.data?.message?.toLowerCase().includes("token") ||
+        error.response?.data?.message?.toLowerCase().includes("expired") ||
+        error.response?.data?.message?.toLowerCase().includes("authentication")
+      ));
+
+    if (isAuthExpired && originalRequest && !originalRequest._retry) {
       if (typeof window !== 'undefined') {
         const isAuthPage =
           window.location.pathname.startsWith('/login') ||

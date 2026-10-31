@@ -40,12 +40,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 4. Role-based Route Guard: /admin requires ADMIN or EXECUTIVE
-    if (token && pathname?.startsWith("/admin")) {
+    // 4. Role-based Route Guard
+    if (token) {
       const role = user?.role?.toUpperCase() || "";
-      const isAdminOrExec = role.includes("ADMIN") || role.includes("EXECUTIVE") || role.includes("SYSADMIN");
-      if (!isAdminOrExec) {
-        toast.error("Access Restricted: Administrator privileges required.");
+      const isStaffEmployee = !role.includes("ADMIN") && !role.includes("EXECUTIVE") && !role.includes("MANAGER") && !role.includes("SYSADMIN");
+
+      if (pathname?.startsWith("/admin")) {
+        const isAdminOrExec = role.includes("ADMIN") || role.includes("EXECUTIVE") || role.includes("SYSADMIN");
+        if (!isAdminOrExec) {
+          toast.error("Access Restricted: Administrator privileges required.");
+          router.replace("/");
+          return;
+        }
+      }
+
+      if (isStaffEmployee && (pathname?.startsWith("/recruitment") || pathname?.startsWith("/analytics") || pathname?.startsWith("/employees"))) {
+        toast.error("Access Restricted: Employee self-service workspace active.");
         router.replace("/");
         return;
       }

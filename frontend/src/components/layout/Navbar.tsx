@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, X, Layers, Calendar, Briefcase, Users, LayoutDashboard, Sun, Moon, LogIn, Clock, Target, Building2 } from "lucide-react";
+import { LogOut, Menu, X, Layers, Calendar, Briefcase, Users, LayoutDashboard, Sun, Moon, LogIn, Clock, Target, Building2, Video, ShieldCheck, UserCheck, Award } from "lucide-react";
 import { useAuthStore } from "@/lib/store/auth.store";
 import { useState, useEffect } from "react";
 import GooeyNav from "@/components/GooeyNav";
@@ -17,7 +17,11 @@ const navItems = [
   { label: "Attendance", href: "/attendance", icon: Clock },
   { label: "Payroll", href: "/payroll", icon: Briefcase },
   { label: "Performance", href: "/performance", icon: Target },
+  { label: "Meetings", href: "/meetings", icon: Video },
+  { label: "Recruitment", href: "/recruitment", icon: UserCheck },
+  { label: "Kudos", href: "/kudos", icon: Award },
   { label: "Directory", href: "/employees", icon: Building2 },
+  { label: "Admin", href: "/admin/dashboard", icon: ShieldCheck },
   { label: "Profile", href: "/profile", icon: Users },
 ];
 
@@ -46,9 +50,25 @@ export function Navbar() {
     return pathname.startsWith(href);
   };
 
+  const roleStr = user?.role?.toUpperCase() || "";
+  const isAdmin = roleStr.includes("ADMIN") || roleStr.includes("SYSADMIN");
+  const isExecutive = !isAdmin && (roleStr.includes("EXECUTIVE") || roleStr.includes("CHRO"));
+  const isManager = !isAdmin && !isExecutive && roleStr.includes("MANAGER");
+  const isEmployee = !isAdmin && !isExecutive && !isManager;
+
+  const roleFilteredItems = navItems.filter((item) => {
+    if (isEmployee) {
+      const restricted = ["/admin", "/recruitment", "/analytics", "/employees"];
+      return !restricted.some((p) => item.href.startsWith(p));
+    }
+    if (item.href.startsWith("/admin")) {
+      return isAdmin;
+    }
+    return true;
+  });
+
   const dynamicNavItems = [
-    ...navItems,
-    { label: "Admin Ops", href: "/admin/dashboard", icon: LayoutDashboard },
+    ...roleFilteredItems,
     ...(isAuthenticated
       ? [
         { label: "Sign Out", href: "#", icon: LogOut, onClick: (e: React.MouseEvent) => { e.preventDefault(); logout(); window.location.href = "/"; } }
