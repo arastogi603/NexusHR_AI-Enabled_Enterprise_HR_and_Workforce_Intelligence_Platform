@@ -302,17 +302,6 @@ npm run dev
 
 ---
 
-## 🎬 Suggested 4-Minute Presentation Flow
-
-For video recordings and evaluator demonstrations, follow this recommended sequence:
-1. **0:00 – 0:45**: Login Screen (`/login`), Poppins typography, and login as HR Admin (`hr@nexushr.demo`).
-2. **0:45 – 1:45**: Operations Dashboard (`/`), 1-click Demo Data Seeder, Employee Directory (`/employees`), and Statutory Payroll Run (`/payroll`) with tax deductions and payslip modal.
-3. **1:45 – 2:45**: Performance Hub (`/performance`), live OKR updates (`+10%`), Competency Radar spider chart, Sprint Burndown curve, and Skill Genome matrix.
-4. **2:45 – 3:30**: Inbuilt Video Meeting (`/meetings`), real WebRTC camera feed, microphone speech visualizer, and 1080p screen share.
-5. **3:30 – 4:00**: Log out and log in as Staff Employee (`employee@nexushr.demo`) to show role-filtered navigation (only 8 self-service tools visible), biometric clock-in, and the circular draggable Nexus AI assistant.
-
----
-
 ## 📄 License & Attribution
 
 Developed as an Enterprise Human Resources & Workforce Intelligence Platform for **Zidio Development**.  
