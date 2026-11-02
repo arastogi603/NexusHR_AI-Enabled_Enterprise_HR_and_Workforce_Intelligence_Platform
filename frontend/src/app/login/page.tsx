@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/lib/store/auth.store";
 import { api } from "@/lib/api";
 import { motion } from "framer-motion";
@@ -19,7 +19,7 @@ import {
 import Link from "next/link";
 import toast from "react-hot-toast";
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,6 +28,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setAuth } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -57,7 +58,12 @@ export default function LoginPage() {
         router.push("/change-password");
       } else {
         toast.success(`Welcome back, ${displayName}!`);
-        router.push("/");
+        const redirectParam = searchParams.get("redirect");
+        if (redirectParam && redirectParam.startsWith("/")) {
+          router.push(redirectParam);
+        } else {
+          router.push("/");
+        }
       }
     } catch (err: any) {
       const message = err.response?.data?.message || err.message || "Invalid email or password. Please try again.";
@@ -199,5 +205,17 @@ export default function LoginPage() {
         </form>
       </motion.div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[85vh] flex items-center justify-center text-white/50">
+        <div className="w-8 h-8 rounded-full border-2 border-orange-500/20 border-t-orange-500 animate-spin" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

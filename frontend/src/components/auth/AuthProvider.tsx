@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store/auth.store";
 import toast from "react-hot-toast";
 
-const PUBLIC_ROUTES = ["/login", "/register"];
+const PUBLIC_ROUTES = ["/login", "/register", "/meetings", "/meet"];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { token, user, isAuthenticated } = useAuthStore();
@@ -22,14 +22,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const isPublic = PUBLIC_ROUTES.some((route) => pathname?.startsWith(route));
 
-    // 1. Unauthenticated redirect to /login
+    // 1. Unauthenticated redirect to /login (preserve destination in ?redirect=)
     if (!token && !isPublic) {
-      router.replace("/login");
+      const redirectQuery = pathname && pathname !== "/" ? `?redirect=${encodeURIComponent(pathname)}` : "";
+      router.replace(`/login${redirectQuery}`);
       return;
     }
 
     // 2. Authenticated trying to visit /login or /register
-    if (token && isPublic) {
+    if (token && (pathname?.startsWith("/login") || pathname?.startsWith("/register"))) {
       router.replace("/");
       return;
     }

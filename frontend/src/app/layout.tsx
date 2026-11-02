@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Poppins, Geist } from "next/font/google";
 import { VerticalNav } from "@/components/layout/VerticalNav";
 import { ThemeProvider } from "@/lib/theme/theme";
 import { AuthProvider } from "@/components/auth/AuthProvider";
@@ -12,18 +11,15 @@ import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { NexusAiChatWidget } from "@/components/ai/NexusAiChatWidget";
 import { PageTransition } from "@/components/layout/PageTransition";
 
-const poppins = Poppins({
-  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-  subsets: ["latin"],
+const poppins = {
   variable: "--font-poppins",
-  display: "swap",
-});
+  className: "font-sans",
+};
 
-const geist = Geist({
-  subsets: ["latin"],
+const geist = {
   variable: "--font-geist",
-  display: "swap",
-});
+  className: "font-sans",
+};
 
 export const metadata: Metadata = {
   title: "NexusHR — Enterprise HR Platform",
