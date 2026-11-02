@@ -5,13 +5,13 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: '/api/:path*',
+        source: "/api/v1/:path*",
         destination: process.env.API_GATEWAY_URL
-          ? `${process.env.API_GATEWAY_URL}/api/:path*`
-          : 'http://localhost:8080/api/:path*'
-      }
-    ]
-  }
+          ? `${process.env.API_GATEWAY_URL}/api/v1/:path*`
+          : "http://localhost:8080/api/v1/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

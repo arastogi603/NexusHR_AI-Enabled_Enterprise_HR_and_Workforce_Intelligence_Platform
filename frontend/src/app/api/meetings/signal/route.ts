@@ -15,24 +15,52 @@ interface StoredSignal {
   timestamp: number;
 }
 
-// In-memory global signal bus across normal and incognito browser tabs
-const globalSignalBus: Map<string, StoredSignal[]> = new Map();
+interface RoomMember {
+  peerId: string;
+  name: string;
+  role: string;
+  lastSeen: number;
+  micMuted?: boolean;
+  camOff?: boolean;
+}
 
-// Helper to clean stale messages older than 45 seconds
+// In-memory global state attached to globalThis to survive Next.js dev HMR reloads and worker isolation
+const globalSignalBus: Map<string, StoredSignal[]> =
+  (globalThis as any).__nexusMeetingSignals || new Map();
+(globalThis as any).__nexusMeetingSignals = globalSignalBus;
+
+const globalRoomMembers: Map<string, Map<string, RoomMember>> =
+  (globalThis as any).__nexusRoomMembers || new Map();
+(globalThis as any).__nexusRoomMembers = globalRoomMembers;
+
+// Helper to clean stale messages older than 45 seconds and members inactive > 15 seconds
 function cleanupRoom(roomId: string) {
-  const cutoff = Date.now() - 45000;
+  const signalCutoff = Date.now() - 45000;
   const messages = globalSignalBus.get(roomId);
   if (messages) {
-    const valid = messages.filter((m) => m.timestamp > cutoff);
+    const valid = messages.filter((m) => m.timestamp > signalCutoff);
     if (valid.length === 0) {
       globalSignalBus.delete(roomId);
     } else {
       globalSignalBus.set(roomId, valid);
     }
   }
+
+  const memberCutoff = Date.now() - 15000;
+  const members = globalRoomMembers.get(roomId);
+  if (members) {
+    for (const [peerId, member] of members.entries()) {
+      if (member.lastSeen < memberCutoff) {
+        members.delete(peerId);
+      }
+    }
+    if (members.size === 0) {
+      globalRoomMembers.delete(roomId);
+    }
+  }
 }
 
-// POST: Publish a WebRTC signal message (join, offer, answer, ice-candidate, chat, leave)
+// POST: Publish a WebRTC signal message (peer-join, sdp-offer, sdp-answer, ice-candidate, peer-state, chat, peer-leave)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -42,8 +70,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required signal parameters" }, { status: 400 });
     }
 
+    const now = Date.now();
+
+    // Ensure room members map exists
+    if (!globalRoomMembers.has(roomId)) {
+      globalRoomMembers.set(roomId, new Map());
+    }
+    const roomMembers = globalRoomMembers.get(roomId)!;
+
+    // Track active members
+    if (type === "peer-join") {
+      roomMembers.set(senderPeerId, {
+        peerId: senderPeerId,
+        name: senderName || "Participant",
+        role: body.senderRole || "Participant",
+        lastSeen: now,
+        micMuted: false,
+        camOff: false,
+      });
+    } else if (type === "peer-state") {
+      const existing = roomMembers.get(senderPeerId);
+      if (existing) {
+        if (body.state?.micMuted !== undefined) existing.micMuted = body.state.micMuted;
+        if (body.state?.camOff !== undefined) existing.camOff = body.state.camOff;
+        existing.lastSeen = now;
+      }
+    } else if (type === "peer-leave") {
+      roomMembers.delete(senderPeerId);
+    } else {
+      // Any other signal updates sender's lastSeen heartbeat
+      const existing = roomMembers.get(senderPeerId);
+      if (existing) {
+        existing.lastSeen = now;
+      } else {
+        roomMembers.set(senderPeerId, {
+          peerId: senderPeerId,
+          name: senderName || "Participant",
+          role: body.senderRole || "Participant",
+          lastSeen: now,
+        });
+      }
+    }
+
     const newSignal: StoredSignal = {
-      id: `sig_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: `sig_${now}_${Math.random().toString(36).substring(2, 7)}`,
       roomId,
       senderPeerId,
       senderName: senderName || "Participant",
@@ -54,7 +124,7 @@ export async function POST(req: NextRequest) {
       candidate: body.candidate,
       chat: body.chat,
       state: body.state,
-      timestamp: Date.now(),
+      timestamp: now,
     };
 
     if (!globalSignalBus.has(roomId)) {
@@ -64,20 +134,24 @@ export async function POST(req: NextRequest) {
     const roomSignals = globalSignalBus.get(roomId)!;
     roomSignals.push(newSignal);
 
-    // Keep max 100 recent signals per room
-    if (roomSignals.length > 100) {
+    // Keep max 150 recent signals per room
+    if (roomSignals.length > 150) {
       roomSignals.shift();
     }
 
     cleanupRoom(roomId);
 
-    return NextResponse.json({ success: true, signalId: newSignal.id });
+    return NextResponse.json({
+      success: true,
+      signalId: newSignal.id,
+      activeMembersCount: roomMembers.size,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to process signal" }, { status: 500 });
   }
 }
 
-// GET: Retrieve signals for a specific peer in a room
+// GET: Retrieve signals and active room members for a specific peer in a room
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const roomId = searchParams.get("roomId");
@@ -89,6 +163,24 @@ export async function GET(req: NextRequest) {
   }
 
   cleanupRoom(roomId);
+
+  const now = Date.now();
+  const roomMembers = globalRoomMembers.get(roomId);
+
+  // Update peer heartbeat if registered
+  if (roomMembers && roomMembers.has(peerId)) {
+    roomMembers.get(peerId)!.lastSeen = now;
+  }
+
+  // Get other members in room
+  const otherMembers: RoomMember[] = [];
+  if (roomMembers) {
+    for (const [id, m] of roomMembers.entries()) {
+      if (id !== peerId) {
+        otherMembers.push(m);
+      }
+    }
+  }
 
   const roomSignals = globalSignalBus.get(roomId) || [];
 
@@ -105,6 +197,8 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     signals: relevant,
-    serverTime: Date.now(),
+    members: otherMembers,
+    totalMembers: (roomMembers ? roomMembers.size : 1),
+    serverTime: now,
   });
 }

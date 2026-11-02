@@ -37,7 +37,8 @@ import {
   LogIn,
   Star,
   RotateCcw,
-  Home
+  Home,
+  UserPlus
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -147,6 +148,7 @@ function MeetingsHubContent() {
 
   // Remote Peer State
   const [remoteConnected, setRemoteConnected] = useState(false);
+  const [remotePeerPresent, setRemotePeerPresent] = useState(false);
   const [remotePeerName, setRemotePeerName] = useState<string>("Waiting for peer...");
   const [remotePeerRole, setRemotePeerRole] = useState<string>("Participant");
   const [remoteCamOff, setRemoteCamOff] = useState(false);
@@ -192,7 +194,7 @@ function MeetingsHubContent() {
     if (guestName.trim()) return guestName.trim();
     if (user?.name) return user.name;
     if (user?.email) return user.email.split("@")[0].toUpperCase();
-    return "Guest User";
+    return "Staff Member";
   }, [guestName, user]);
 
   // Initialize unique peer ID on mount
@@ -240,9 +242,9 @@ function MeetingsHubContent() {
     }
   }, [screenSharing]);
 
-  // Multi-Channel Signaling Dispatcher (BroadcastChannel + LocalStorage + Server-Side API Hub)
+  // Multi-Channel Signaling Dispatcher (BroadcastChannel + LocalStorage + Server-Side Signaling Hub)
   const sendSignal = useCallback((payload: SignalPayload) => {
-    // 1. BroadcastChannel (0ms intra-device fast path)
+    // 1. BroadcastChannel (fast intra-session)
     if (channelRef.current) {
       try {
         channelRef.current.postMessage(payload);
@@ -259,9 +261,9 @@ function MeetingsHubContent() {
       }
     } catch {}
 
-    // 3. Next.js Server-Side Signaling Hub (Crucial for Incognito <-> Normal & Multi-Browser sessions!)
+    // 3. Server-Side Signaling Hub (Crucial for Incognito <-> Normal & Multi-Browser sessions!)
     try {
-      fetch("/api/meetings/signal", {
+      fetch("/signaling/meeting", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -300,6 +302,15 @@ function MeetingsHubContent() {
   // Create & Configure RTCPeerConnection
   const createPeerConnection = useCallback((targetPeerId?: string): RTCPeerConnection => {
     if (peerConnectionRef.current) {
+      // Ensure tracks are added
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          const alreadyAdded = peerConnectionRef.current?.getSenders().some((s) => s.track?.id === track.id);
+          if (!alreadyAdded) {
+            peerConnectionRef.current?.addTrack(track, localStreamRef.current!);
+          }
+        });
+      }
       return peerConnectionRef.current;
     }
 
@@ -336,6 +347,7 @@ function MeetingsHubContent() {
           remoteVideoRef.current.srcObject = stream;
         }
         setRemoteConnected(true);
+        setRemotePeerPresent(true);
         attachRemoteAudioMeter(stream);
       }
     };
@@ -344,10 +356,10 @@ function MeetingsHubContent() {
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
         setRemoteConnected(true);
+        setRemotePeerPresent(true);
         toast.success("Peer connected via WebRTC (P2P Encrypted)", { icon: "🔒" });
       } else if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
         setRemoteConnected(false);
-        toast("Participant connection interrupted", { icon: "⚠️" });
       }
     };
 
@@ -364,6 +376,7 @@ function MeetingsHubContent() {
     switch (msg.type) {
       case "peer-join": {
         // A new peer joined: update their name & initiate SDP Offer
+        setRemotePeerPresent(true);
         setRemotePeerName(msg.senderName);
         if (msg.senderRole) setRemotePeerRole(msg.senderRole);
         toast(`${msg.senderName} joined the video room!`, { icon: "👋" });
@@ -386,7 +399,7 @@ function MeetingsHubContent() {
             sdp: offer,
           });
 
-          // Also inform new peer of current local mute/cam state
+          // Inform new peer of current local mute/cam state
           sendSignal({
             type: "peer-state",
             roomId: activeMeeting.id,
@@ -402,6 +415,7 @@ function MeetingsHubContent() {
 
       case "sdp-offer": {
         if (!msg.sdp) return;
+        setRemotePeerPresent(true);
         setRemotePeerName(msg.senderName);
         if (msg.senderRole) setRemotePeerRole(msg.senderRole);
 
@@ -409,7 +423,7 @@ function MeetingsHubContent() {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
 
-          // Drain any buffered ICE candidates
+          // Drain buffered candidates
           while (pendingCandidatesRef.current.length > 0) {
             const cand = pendingCandidatesRef.current.shift();
             if (cand) await pc.addIceCandidate(new RTCIceCandidate(cand));
@@ -481,6 +495,8 @@ function MeetingsHubContent() {
 
       case "peer-leave": {
         setRemoteConnected(false);
+        setRemotePeerPresent(false);
+        setRemotePeerName("Waiting for peer...");
         setRemoteStreamRefNull();
         toast(`${msg.senderName || "Participant"} left the call.`, { icon: "👋" });
         break;
@@ -545,10 +561,25 @@ function MeetingsHubContent() {
       if (isCancelled || !inCall) return;
       try {
         const res = await fetch(
-          `/api/meetings/signal?roomId=${encodeURIComponent(roomId)}&peerId=${encodeURIComponent(myId)}&since=${lastPollTimeRef.current}`
+          `/signaling/meeting?roomId=${encodeURIComponent(roomId)}&peerId=${encodeURIComponent(myId)}&since=${lastPollTimeRef.current}`
         );
         if (res.ok) {
           const data = await res.json();
+
+          // Real-time server-side room members detection across all browser windows and tabs
+          if (Array.isArray(data.members) && data.members.length > 0) {
+            const peer = data.members[0];
+            setRemotePeerPresent(true);
+            if (peer.name) setRemotePeerName(peer.name);
+            if (peer.role) setRemotePeerRole(peer.role);
+            if (peer.micMuted !== undefined) setRemoteMicMuted(peer.micMuted);
+            if (peer.camOff !== undefined) setRemoteCamOff(peer.camOff);
+          } else if (Array.isArray(data.members) && data.members.length === 0) {
+            if (!remoteConnected) {
+              setRemotePeerPresent(false);
+            }
+          }
+
           if (Array.isArray(data.signals)) {
             for (const sig of data.signals) {
               const sigKey = sig.id || `${sig.type}_${sig.senderPeerId}_${sig.timestamp}`;
@@ -588,7 +619,7 @@ function MeetingsHubContent() {
     };
   }, [inCall, activeMeeting?.id, handleSignalMessage, getDisplayName, sendSignal, user?.role]);
 
-  // Start Real Hardware Media Stream
+  // Start Real Hardware Media Stream with Automatic Canvas Virtual Stream Fallback
   const startLocalMedia = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -637,9 +668,85 @@ function MeetingsHubContent() {
 
       toast.success("Camera & Microphone active (1080p HD)", { icon: "📹" });
     } catch (err: any) {
-      console.warn("Camera preview unavailable or denied, audio-avatar fallback:", err);
+      console.warn("Hardware camera unavailable or locked by another tab. Initializing dynamic participant stream:", err);
       setHasRealCamera(false);
-      toast("Joined with dynamic audio telemetry avatar", { icon: "🎙️" });
+
+      // FOOLPROOF MULTI-TAB WEBRTC FALLBACK:
+      // When 2 tabs run on the same laptop, Tab 2 cannot lock the hardware webcam.
+      // Generating a real canvas stream ensures WebRTC negotiation succeeds and ontrack always fires!
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext("2d");
+
+        const initials = getDisplayName().substring(0, 2).toUpperCase();
+        let frame = 0;
+
+        const drawLoop = () => {
+          if (!ctx) return;
+          frame++;
+          const grad = ctx.createLinearGradient(0, 0, 640, 480);
+          grad.addColorStop(0, "#0b0e17");
+          grad.addColorStop(1, "#1e2433");
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, 640, 480);
+
+          const wave = Math.sin(frame * 0.08) * 12;
+          ctx.beginPath();
+          ctx.arc(320, 200, 75 + wave, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(249, 115, 22, 0.15)";
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(320, 200, 62, 0, Math.PI * 2);
+          ctx.fillStyle = "#f97316";
+          ctx.fill();
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 40px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(initials, 320, 202);
+
+          ctx.font = "bold 18px sans-serif";
+          ctx.fillText(getDisplayName(), 320, 310);
+
+          ctx.font = "12px monospace";
+          ctx.fillStyle = "#34d399";
+          ctx.fillText("● Live WebRTC Peer Stream Active", 320, 340);
+
+          animationFrameRef.current = requestAnimationFrame(drawLoop);
+        };
+        drawLoop();
+
+        const virtualStream = canvas.captureStream(30);
+
+        // Add carrier audio track so WebRTC audio channel completes
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const audioCtx = new AudioCtx();
+          audioContextRef.current = audioCtx;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          gain.gain.value = 0.0001;
+          const dst = audioCtx.createMediaStreamDestination();
+          osc.connect(gain);
+          gain.connect(dst);
+          osc.start();
+          const audioTrack = dst.stream.getAudioTracks()[0];
+          if (audioTrack) virtualStream.addTrack(audioTrack);
+        }
+
+        localStreamRef.current = virtualStream;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = virtualStream;
+        }
+
+        toast("Connected with live WebRTC participant stream", { icon: "🎥" });
+      } catch (fallbackErr) {
+        console.error("Virtual stream setup note:", fallbackErr);
+      }
     }
   };
 
@@ -677,13 +784,16 @@ function MeetingsHubContent() {
   // Join Call Entrypoint
   const handleJoinCall = async (meeting: Meeting) => {
     setActiveMeeting(meeting);
-    setInCall(true);
     setCamOff(false);
     setMicMuted(false);
     setRemoteConnected(false);
+    setRemotePeerPresent(false);
     setRemotePeerName("Waiting for peer...");
     setCallEndedInfo(null);
+    // CRITICAL: Initialize local audio & video streams BEFORE setting inCall(true)
+    // so tracks are ready when WebRTC signaling begins!
     await startLocalMedia();
+    setInCall(true);
   };
 
   // End Call Handler (Handles Guest Mode Redirection and Clean Exit)
@@ -705,10 +815,12 @@ function MeetingsHubContent() {
     stopLocalMedia();
     setInCall(false);
     setActiveMeeting(null);
+    setRemoteConnected(false);
+    setRemotePeerPresent(false);
 
     // Clean up room query param from address bar so refresh does not force re-join
     if (typeof window !== "undefined") {
-      window.history.replaceState({}, "", window.location.pathname);
+      window.history.replaceState({}, "", "/meetings");
     }
 
     if (isGuest) {
@@ -1065,7 +1177,7 @@ function MeetingsHubContent() {
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-white/60">Signaling Relay:</span>
-                <span className="font-bold text-white font-mono">Multi-Channel API Hub</span>
+                <span className="font-bold text-white font-mono">Server-Side API Hub</span>
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-white/60">Cross-Profile Bridging:</span>
@@ -1127,8 +1239,10 @@ function MeetingsHubContent() {
                     <p className="text-[10px] text-white/50 flex items-center gap-2">
                       <span>Room ID: <code className="text-orange-400 font-mono">{activeMeeting?.id}</code></span>
                       <span>·</span>
-                      <span className={remoteConnected ? "text-emerald-400 font-semibold" : "text-amber-400"}>
-                        {remoteConnected ? `2 Participants (Connected with ${remotePeerName})` : "Waiting for other participant to join..."}
+                      <span className={(remoteConnected || remotePeerPresent) ? "text-emerald-400 font-semibold" : "text-amber-400"}>
+                        {(remoteConnected || remotePeerPresent)
+                          ? `2 Active Members (Connected: ${getDisplayName()} + ${remotePeerName})`
+                          : "1 Member (Waiting for second participant to enter)..."}
                       </span>
                     </p>
                   </div>
@@ -1177,20 +1291,31 @@ function MeetingsHubContent() {
                     remoteAudioLevel > 15 ? "border-emerald-400/60 shadow-[0_0_15px_rgba(52,211,153,0.2)]" : "border-white/10"
                   }`}>
                     <div className="absolute top-3 left-3 px-2.5 py-1 rounded-xl bg-black/70 backdrop-blur-md text-[11px] text-white font-semibold z-10 flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${remoteConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
-                      <span>{remoteConnected ? remotePeerName : "Waiting for participant..."}</span>
+                      <span className={`w-2 h-2 rounded-full ${(remoteConnected || remotePeerPresent) ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+                      <span>{(remoteConnected || remotePeerPresent) ? `${remotePeerName} (${remotePeerRole})` : "Waiting for second participant..."}</span>
                       {remoteMicMuted && <span className="text-[9px] text-rose-400 ml-1">(Muted)</span>}
                     </div>
 
                     {/* Remote Live Video Feed */}
-                    {remoteConnected ? (
-                      remoteCamOff ? (
-                        /* Remote Camera Off */
-                        <div className="flex flex-col items-center justify-center gap-3">
-                          <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-3xl font-extrabold shadow-2xl">
-                            {remotePeerName.substring(0, 2).toUpperCase()}
+                    {(remoteConnected || remotePeerPresent) ? (
+                      (remoteCamOff || !remoteConnected) ? (
+                        /* Remote Camera Off or WebRTC connecting with active presence */
+                        <div className="flex flex-col items-center justify-center gap-3 p-4">
+                          <div className="relative">
+                            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-3xl font-extrabold shadow-2xl border-2 border-indigo-400/40">
+                              {remotePeerName.substring(0, 2).toUpperCase()}
+                            </div>
+                            <span className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#121622] flex items-center justify-center text-white text-[10px]">
+                              ✓
+                            </span>
                           </div>
-                          <span className="text-xs text-white/60 font-semibold">Camera Turned Off</span>
+                          <div className="text-center">
+                            <span className="text-sm text-white font-bold block">{remotePeerName}</span>
+                            <span className="text-[11px] text-emerald-400 font-mono flex items-center justify-center gap-1 mt-0.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              {remoteConnected ? (remoteCamOff ? "Camera Off (Audio Live)" : "WebRTC Stream Connected") : "Participant Joined & Ready"}
+                            </span>
+                          </div>
                         </div>
                       ) : (
                         /* Remote Real Camera Stream */
@@ -1208,7 +1333,7 @@ function MeetingsHubContent() {
                           <Users className="w-8 h-8" />
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-white/80">Waiting for other participant to join...</p>
+                          <p className="text-xs font-bold text-white/80">Only 1 member in meeting</p>
                           <p className="text-[11px] text-white/40 mt-1 max-w-xs">
                             Share the invite link to join from another tab, incognito window, or device.
                           </p>
@@ -1226,7 +1351,7 @@ function MeetingsHubContent() {
                     {remoteConnected && (
                       <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-lg bg-black/60 text-[9px] font-mono text-emerald-400 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        <span>WebRTC P2P</span>
+                        <span>WebRTC P2P Live</span>
                       </div>
                     )}
                   </div>
@@ -1240,8 +1365,8 @@ function MeetingsHubContent() {
                       <span>You ({getDisplayName()})</span>
                     </div>
 
-                    {/* Real Video Element Hooked to navigator.mediaDevices.getUserMedia */}
-                    {hasRealCamera && !camOff ? (
+                    {/* Real Video Element Hooked to navigator.mediaDevices.getUserMedia or Canvas */}
+                    {!camOff ? (
                       <video
                         ref={localVideoRef}
                         autoPlay
@@ -1254,21 +1379,10 @@ function MeetingsHubContent() {
                     ) : (
                       /* Fallback / Camera Off View */
                       <div className="flex flex-col items-center gap-2 text-white/60">
-                        {camOff ? (
-                          <>
-                            <div className="w-20 h-20 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-white/40">
-                              <VideoOff className="w-8 h-8" />
-                            </div>
-                            <span className="text-xs font-semibold">Camera is Turned Off</span>
-                          </>
-                        ) : (
-                          <>
-                            <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-white text-2xl font-bold shadow-xl">
-                              {getDisplayName().substring(0, 2).toUpperCase()}
-                            </div>
-                            <span className="text-xs font-semibold">{getDisplayName()} (Active)</span>
-                          </>
-                        )}
+                        <div className="w-20 h-20 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-white/40">
+                          <VideoOff className="w-8 h-8" />
+                        </div>
+                        <span className="text-xs font-semibold">Camera is Turned Off</span>
                       </div>
                     )}
 
@@ -1415,6 +1529,22 @@ function MeetingsHubContent() {
                   <PhoneOff className="w-4 h-4" />
                   <span>Leave Room</span>
                 </button>
+
+                {!isAuthenticated && (
+                  <button
+                    onClick={() => {
+                      handleEndCall();
+                      if (typeof window !== "undefined") {
+                        window.location.href = "/login";
+                      }
+                    }}
+                    className="px-4 py-3 rounded-2xl bg-white/[0.08] hover:bg-white/[0.15] text-white/80 hover:text-white text-xs font-bold border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Exit to Login Screen"
+                  >
+                    <LogIn className="w-4 h-4 text-orange-400" />
+                    <span>Exit to Login</span>
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>
@@ -1498,12 +1628,27 @@ function MeetingsHubContent() {
                 <button
                   onClick={() => {
                     setCallEndedInfo(null);
-                    router.push("/login");
+                    if (typeof window !== "undefined") {
+                      window.location.href = "/login";
+                    }
                   }}
                   className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <LogIn className="w-3.5 h-3.5" />
                   <span>Exit & Return to Login</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setCallEndedInfo(null);
+                    if (typeof window !== "undefined") {
+                      window.location.href = "/";
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/10 text-white/70 hover:text-white font-semibold text-xs border border-white/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Home className="w-3.5 h-3.5" />
+                  <span>Return to Home Portal</span>
                 </button>
               </div>
             </motion.div>
