@@ -34,7 +34,10 @@ import {
   Cast,
   UserCheck,
   Link as LinkIcon,
-  LogIn
+  LogIn,
+  Star,
+  RotateCcw,
+  Home
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -49,6 +52,7 @@ interface Meeting {
 }
 
 interface SignalPayload {
+  id?: string;
   type: "peer-join" | "sdp-offer" | "sdp-answer" | "ice-candidate" | "peer-state" | "chat" | "peer-leave";
   roomId: string;
   senderPeerId: string;
@@ -59,6 +63,7 @@ interface SignalPayload {
   candidate?: RTCIceCandidateInit;
   chat?: { sender: string; text: string; time: string };
   state?: { micMuted: boolean; camOff: boolean };
+  timestamp?: number;
 }
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -131,6 +136,15 @@ function MeetingsHubContent() {
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
 
+  // Call Concluded Exit Screen State
+  const [callEndedInfo, setCallEndedInfo] = useState<{
+    roomId: string;
+    title: string;
+    duration: number;
+    isGuest: boolean;
+  } | null>(null);
+  const [callRating, setCallRating] = useState<number>(5);
+
   // Remote Peer State
   const [remoteConnected, setRemoteConnected] = useState(false);
   const [remotePeerName, setRemotePeerName] = useState<string>("Waiting for peer...");
@@ -154,13 +168,15 @@ function MeetingsHubContent() {
   const animationFrameRef = useRef<number | null>(null);
   const remoteAnimFrameRef = useRef<number | null>(null);
 
-  // Unique identifier for this client session
+  // Signaling & Deduplication
   const myPeerIdRef = useRef<string>("");
   const channelRef = useRef<BroadcastChannel | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const lastPollTimeRef = useRef<number>(0);
+  const processedSignalIdsRef = useRef<Set<string>>(new Set());
 
   const [chatMessages, setChatMessages] = useState<{ sender: string; text: string; time: string }[]>([
-    { sender: "Nexus System", text: "End-to-end encrypted WebRTC room initialized.", time: "Just now" },
+    { sender: "Nexus System", text: "End-to-end encrypted WebRTC conference initialized.", time: "Just now" },
   ]);
   const [inputMessage, setInputMessage] = useState("");
 
@@ -224,18 +240,16 @@ function MeetingsHubContent() {
     }
   }, [screenSharing]);
 
-  // Multi-Channel Signaling Dispatcher
+  // Multi-Channel Signaling Dispatcher (BroadcastChannel + LocalStorage + Server-Side API Hub)
   const sendSignal = useCallback((payload: SignalPayload) => {
-    // 1. BroadcastChannel (0ms intra-device / multi-tab)
+    // 1. BroadcastChannel (0ms intra-device fast path)
     if (channelRef.current) {
       try {
         channelRef.current.postMessage(payload);
-      } catch (err) {
-        console.warn("BroadcastChannel error:", err);
-      }
+      } catch (err) {}
     }
 
-    // 2. LocalStorage StorageEvent fallback (cross-window on same host)
+    // 2. LocalStorage StorageEvent fallback
     try {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
@@ -243,6 +257,15 @@ function MeetingsHubContent() {
           JSON.stringify({ ...payload, _t: Date.now() + Math.random() })
         );
       }
+    } catch {}
+
+    // 3. Next.js Server-Side Signaling Hub (Crucial for Incognito <-> Normal & Multi-Browser sessions!)
+    try {
+      fetch("/api/meetings/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
     } catch {}
   }, []);
 
@@ -479,17 +502,24 @@ function MeetingsHubContent() {
     }
   };
 
-  // Bind Signaling Listeners for Active Room
+  // Bind Signaling Listeners for Active Room (Local Channels + API Poller)
   useEffect(() => {
     if (!inCall || !activeMeeting?.id) return;
 
     const roomId = activeMeeting.id;
+    const myId = myPeerIdRef.current;
 
     // 1. Setup BroadcastChannel
     const bc = new BroadcastChannel(`nexushr-room-${roomId}`);
     channelRef.current = bc;
     bc.onmessage = (event) => {
-      if (event.data) handleSignalMessage(event.data);
+      if (event.data) {
+        const sigKey = event.data.id || `${event.data.type}_${event.data.senderPeerId}_${event.data.timestamp}`;
+        if (!processedSignalIdsRef.current.has(sigKey)) {
+          processedSignalIdsRef.current.add(sigKey);
+          handleSignalMessage(event.data);
+        }
+      }
     };
 
     // 2. Setup Storage Event Listener
@@ -497,22 +527,59 @@ function MeetingsHubContent() {
       if (e.key === `nexushr-sig-${roomId}` && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          handleSignalMessage(parsed);
+          const sigKey = parsed.id || `${parsed.type}_${parsed.senderPeerId}_${parsed.timestamp}`;
+          if (!processedSignalIdsRef.current.has(sigKey)) {
+            processedSignalIdsRef.current.add(sigKey);
+            handleSignalMessage(parsed);
+          }
         } catch {}
       }
     };
     window.addEventListener("storage", handleStorageEvent);
 
-    // 3. Announce Join to other peers in room
+    // 3. Setup Server-Side Signal Polling (Bridges Incognito Windows and Separate Browsers)
+    let isCancelled = false;
+    lastPollTimeRef.current = Date.now() - 4000;
+
+    const pollApiSignals = async () => {
+      if (isCancelled || !inCall) return;
+      try {
+        const res = await fetch(
+          `/api/meetings/signal?roomId=${encodeURIComponent(roomId)}&peerId=${encodeURIComponent(myId)}&since=${lastPollTimeRef.current}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.signals)) {
+            for (const sig of data.signals) {
+              const sigKey = sig.id || `${sig.type}_${sig.senderPeerId}_${sig.timestamp}`;
+              if (!processedSignalIdsRef.current.has(sigKey)) {
+                processedSignalIdsRef.current.add(sigKey);
+                handleSignalMessage(sig);
+              }
+              if (sig.timestamp && sig.timestamp > lastPollTimeRef.current) {
+                lastPollTimeRef.current = sig.timestamp;
+              }
+            }
+          }
+        }
+      } catch {}
+    };
+
+    pollApiSignals();
+    const pollInterval = setInterval(pollApiSignals, 500);
+
+    // 4. Announce Join to other peers in room
     sendSignal({
       type: "peer-join",
       roomId,
-      senderPeerId: myPeerIdRef.current,
+      senderPeerId: myId,
       senderName: getDisplayName(),
       senderRole: user?.role || "Participant",
     });
 
     return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
       window.removeEventListener("storage", handleStorageEvent);
       if (channelRef.current) {
         channelRef.current.close();
@@ -615,11 +682,17 @@ function MeetingsHubContent() {
     setMicMuted(false);
     setRemoteConnected(false);
     setRemotePeerName("Waiting for peer...");
+    setCallEndedInfo(null);
     await startLocalMedia();
   };
 
-  // End Call Handler
+  // End Call Handler (Handles Guest Mode Redirection and Clean Exit)
   const handleEndCall = () => {
+    const currentRoomId = activeMeeting?.id || "meet-1";
+    const currentTitle = activeMeeting?.title || "Virtual Video Conference";
+    const durationSnapshot = callDuration;
+    const isGuest = !isAuthenticated;
+
     if (activeMeeting?.id) {
       sendSignal({
         type: "peer-leave",
@@ -628,10 +701,26 @@ function MeetingsHubContent() {
         senderName: getDisplayName(),
       });
     }
+
     stopLocalMedia();
     setInCall(false);
     setActiveMeeting(null);
-    toast("Call ended", { icon: "👋" });
+
+    // Clean up room query param from address bar so refresh does not force re-join
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+
+    if (isGuest) {
+      setCallEndedInfo({
+        roomId: currentRoomId,
+        title: currentTitle,
+        duration: durationSnapshot,
+        isGuest: true,
+      });
+    } else {
+      toast("Call ended", { icon: "👋" });
+    }
   };
 
   // Toggle Microphone
@@ -966,7 +1055,7 @@ function MeetingsHubContent() {
             </div>
 
             <p className="text-xs text-white/60 leading-relaxed">
-              Launch instant peer-to-peer WebRTC video conferences. Share the direct copy link with any team member or candidate to join immediately without 3rd-party subscriptions.
+              Launch instant peer-to-peer WebRTC video conferences. Share the direct copy link with any team member, candidate, or incognito browser to join immediately.
             </p>
 
             <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-2">
@@ -975,12 +1064,12 @@ function MeetingsHubContent() {
                 <span className="font-bold text-emerald-400 font-mono">VP8 / H.264 HD</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-white/60">Audio Bitrate:</span>
-                <span className="font-bold text-white font-mono">Opus 128 kbps Fullband</span>
+                <span className="text-white/60">Signaling Relay:</span>
+                <span className="font-bold text-white font-mono">Multi-Channel API Hub</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-white/60">Invite URL Routing:</span>
-                <span className="font-bold text-orange-400 font-mono">/meetings?room=:id</span>
+                <span className="text-white/60">Cross-Profile Bridging:</span>
+                <span className="font-bold text-orange-400 font-mono">Incognito & Normal Active</span>
               </div>
             </div>
 
@@ -1005,7 +1094,7 @@ function MeetingsHubContent() {
             </div>
 
             <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs text-white/50">
-              <span>Signaling: Live</span>
+              <span>Signaling: Active</span>
               <span className="text-emerald-400 font-bold">DTLS 1.2 Encrypted</span>
             </div>
           </div>
@@ -1039,7 +1128,7 @@ function MeetingsHubContent() {
                       <span>Room ID: <code className="text-orange-400 font-mono">{activeMeeting?.id}</code></span>
                       <span>·</span>
                       <span className={remoteConnected ? "text-emerald-400 font-semibold" : "text-amber-400"}>
-                        {remoteConnected ? "2 Participants (WebRTC P2P Live)" : "Waiting for participant to join..."}
+                        {remoteConnected ? `2 Participants (Connected with ${remotePeerName})` : "Waiting for other participant to join..."}
                       </span>
                     </p>
                   </div>
@@ -1072,7 +1161,7 @@ function MeetingsHubContent() {
                   <button
                     onClick={handleEndCall}
                     className="p-2 rounded-xl bg-white/[0.05] hover:bg-rose-500/20 text-white/60 hover:text-rose-400 transition-colors cursor-pointer"
-                    title="Close Video Room"
+                    title="Leave Call Room"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1119,9 +1208,9 @@ function MeetingsHubContent() {
                           <Users className="w-8 h-8" />
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-white/80">No one else is here yet</p>
+                          <p className="text-xs font-bold text-white/80">Waiting for other participant to join...</p>
                           <p className="text-[11px] text-white/40 mt-1 max-w-xs">
-                            Share the copy link with another person to join this video conference.
+                            Share the invite link to join from another tab, incognito window, or device.
                           </p>
                         </div>
                         <button
@@ -1333,6 +1422,96 @@ function MeetingsHubContent() {
       </AnimatePresence>
 
       {/* =========================================================================
+          CALL ENDED / MEETING CONCLUDED SCREEN (For Guest / Participant Departure)
+          ========================================================================= */}
+      <AnimatePresence>
+        {callEndedInfo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="glass-card max-w-md w-full p-6 sm:p-7 rounded-3xl relative border border-white/15 shadow-2xl text-center space-y-4 pop-in"
+            >
+              <div className="w-14 h-14 mx-auto rounded-3xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+
+              <div>
+                <h3 className="text-lg font-extrabold text-white">You Left the Video Meeting</h3>
+                <p className="text-xs text-white/60 mt-1">
+                  Session <code className="text-orange-400 font-mono font-bold">{callEndedInfo.roomId}</code> concluded.
+                </p>
+                <div className="inline-block px-3 py-1 rounded-full bg-white/[0.05] border border-white/10 text-xs font-mono text-white/70 mt-2">
+                  Call Duration: {formatCallTime(callEndedInfo.duration)}
+                </div>
+              </div>
+
+              {/* Call Quality Rating */}
+              <div className="py-2 border-y border-white/10">
+                <span className="text-[10.5px] font-bold text-white/50 uppercase tracking-wider block mb-2">
+                  Rate Audio & Video Quality
+                </span>
+                <div className="flex items-center justify-center gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onClick={() => {
+                        setCallRating(star);
+                        toast.success("Thank you for your feedback!");
+                      }}
+                      className="p-1 cursor-pointer transition-transform hover:scale-125"
+                    >
+                      <Star
+                        className={`w-6 h-6 ${
+                          star <= callRating ? "text-amber-400 fill-amber-400" : "text-white/20"
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Exit Action Buttons */}
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  onClick={() => {
+                    const room = callEndedInfo.roomId;
+                    setCallEndedInfo(null);
+                    const meet = meetings.find((m) => m.id === room) || {
+                      id: room,
+                      title: callEndedInfo.title,
+                      time: "Live Now",
+                      duration: "45 mins",
+                      type: "Team Standup",
+                      attendees: ["Host", getDisplayName()],
+                      status: "LIVE_NOW",
+                    };
+                    handleJoinCall(meet);
+                  }}
+                  className="w-full py-2.5 rounded-2xl bg-white/[0.08] hover:bg-white/15 text-white font-bold text-xs border border-white/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Rejoin Meeting</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setCallEndedInfo(null);
+                    router.push("/login");
+                  }}
+                  className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Exit & Return to Login</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* =========================================================================
           GUEST PARTICIPANT JOIN MODAL (When opening via shared link)
           ========================================================================= */}
       <AnimatePresence>
@@ -1362,7 +1541,7 @@ function MeetingsHubContent() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Alex Green or External Candidate"
+                    placeholder="e.g. Sarah Connor or Job Candidate"
                     value={guestName}
                     onChange={(e) => setGuestName(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-white/[0.05] border border-white/10 text-white text-xs outline-none focus:border-orange-500/50"
