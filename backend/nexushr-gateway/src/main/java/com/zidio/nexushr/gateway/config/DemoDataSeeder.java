@@ -285,9 +285,72 @@ public class DemoDataSeeder implements CommandLineRunner {
         return saved;
     }
 
+    private void seedEnterprise100Employees() {
+        log.info("Expanding demo environment to 100 enterprise employees...");
+
+        Role roleEmployee = ensureRole("ROLE_EMPLOYEE", "Standard Employee with self-service features");
+
+        Department engDept = ensureDepartment("Engineering", "Software Architecture & System Engineering");
+        Department hrDept = ensureDepartment("Human Resources", "People Operations & Talent");
+        Department opsDept = ensureDepartment("DevOps & Infrastructure", "Cloud Architecture & Observability");
+        Department prodDept = ensureDepartment("Product Management", "Product Strategy & Feature Roadmaps");
+        Department designDept = ensureDepartment("UI/UX Design", "Design Systems & User Experience");
+        Department finDept = ensureDepartment("Finance & Accounts", "Statutory Compliance & Treasury");
+        Department salesDept = ensureDepartment("Sales & Marketing", "Growth, Accounts & Client Success");
+
+        Department[] depts = {
+            engDept, engDept, engDept, opsDept, prodDept, designDept, hrDept, finDept, salesDept
+        };
+
+        String[] firstNames = {
+            "Aarav", "Vivaan", "Aditya", "Vihaan", "Arjun", "Reyansh", "Aadhya", "Diya", "Fatima", "Ishaan",
+            "Shaurya", "Atharva", "Kabir", "Ritvik", "Tanvi", "Ishita", "Meera", "Riya", "Sanya", "Neha",
+            "Pooja", "Rohan", "Karan", "Simran", "Harshit", "Sneha", "Divya", "Kunal", "Gaurav", "Meenakshi",
+            "Swati", "Nikhil", "Tarun", "Pallavi", "Varun", "Yash", "Mansi", "Deepak", "Shilpa", "Alok"
+        };
+
+        String[] lastNames = {
+            "Kapoor", "Banerjee", "Mehta", "Reddy", "Joshi", "Gupta", "Malhotra", "Kulkarni", "Deshmukh", "Saxena",
+            "Bhattacharya", "Chatterjee", "Nambiar", "Pillai", "Gill", "Chopra", "Ahuja", "Hegde", "Menon", "Chauhan"
+        };
+
+        String[] roles = {
+            "Senior Backend Engineer", "Frontend Specialist", "Full Stack Developer", "Cloud Data Engineer",
+            "Site Reliability Engineer", "Platform Security Engineer", "Associate Product Manager",
+            "UI/UX Interaction Designer", "Talent Acquisition Partner", "Statutory Tax Accountant"
+        };
+
+        Employee manager = employeeRepository.findByEmail("manager@nexushr.demo").orElse(null);
+        String defaultDemoPassword = passwordEncoder.encode("Demo@12345");
+
+        for (int i = 6; i <= 100; i++) {
+            String empCode = String.format("NX-%04d", i);
+            if (employeeRepository.findByEmployeeCode(empCode).isPresent()) {
+                continue;
+            }
+
+            String fName = firstNames[(i * 7 + 3) % firstNames.length];
+            String lName = lastNames[(i * 11 + 5) % lastNames.length];
+            String email = String.format("%s.%s%d@nexushr.corp", fName.toLowerCase(), lName.toLowerCase(), i);
+            Department dept = depts[i % depts.length];
+            String designation = roles[i % roles.length];
+            BigDecimal salary = new BigDecimal(1200000 + (i * 25000));
+
+            User user = ensureUser(email, defaultDemoPassword, roleEmployee);
+            Employee emp = ensureEmployee(user, empCode, fName, lName, email, designation, dept, salary, manager);
+
+            if (i % 20 != 0) {
+                seedTodayAttendance(emp);
+            }
+        }
+
+        log.info("Successfully seeded 100 enterprise employees into database!");
+    }
+
     public void seedData() {
         try {
             run();
+            seedEnterprise100Employees();
         } catch (Exception e) {
             log.error("Failed to seed demo data", e);
         }

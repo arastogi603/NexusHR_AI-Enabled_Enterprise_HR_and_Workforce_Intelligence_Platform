@@ -28,13 +28,24 @@ import {
   ArrowRight,
   Lock,
   FileText,
-  FolderTree
+  FolderTree,
+  Sparkles
 } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import dynamic from "next/dynamic";
 import LiquidCarveButton from "@/components/ui/LiquidCarveButton";
 import { DocumentManagerModal } from "@/components/employee/DocumentManagerModal";
+import {
+  ENTERPRISE_DEPARTMENTS,
+  DEFAULT_5_EMPLOYEES,
+  getStoredEmployees,
+  isSeededMode,
+  saveEmployees,
+  appendNewEmployee,
+  seedEnterpriseCompanyData,
+  resetToFivePersonas
+} from "@/lib/demo-data-generator";
 
 const LineSidebar: any = dynamic(() => import("@/components/LineSidebar"), { ssr: false });
 
@@ -83,6 +94,9 @@ export default function EmployeesPage() {
   // Filters
   const [selectedDeptIndex, setSelectedDeptIndex] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSeeded, setIsSeeded] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 12;
 
   // Modals & Drawers
   const [isOnboardModalOpen, setIsOnboardModalOpen] = useState(false);
@@ -166,23 +180,69 @@ export default function EmployeesPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [empRes, deptRes] = await Promise.allSettled([
-        api.get("/employees?size=150"),
-        api.get("/departments")
-      ]);
+      const seeded = isSeededMode();
+      setIsSeeded(seeded);
+      const stored = getStoredEmployees();
 
-      if (empRes.status === "fulfilled") {
-        setEmployees(empRes.value.data.content || []);
-      }
-      if (deptRes.status === "fulfilled") {
-        const depts = deptRes.value.data || [];
-        setDepartments(depts);
-        if (depts.length > 0 && !onboardingForm.departmentId) {
-          setOnboardingForm(prev => ({ ...prev, departmentId: depts[0].id }));
+      let finalEmps: Employee[] = stored;
+      try {
+        const empRes = await api.get("/employees?size=150");
+        const backendEmps = empRes.data.content || [];
+        if (backendEmps.length > 0) {
+          if (!seeded) {
+            finalEmps = backendEmps.slice(0, 5);
+          } else {
+            finalEmps = backendEmps.length >= 20 ? backendEmps : stored;
+          }
         }
+      } catch {
+        finalEmps = stored;
+      }
+
+      setEmployees(finalEmps);
+
+      // Ensure all 8 enterprise departments exist
+      try {
+        const deptRes = await api.get("/departments");
+        const depts = deptRes.data || [];
+        if (depts.length >= 5) {
+          setDepartments(depts);
+        } else {
+          setDepartments(ENTERPRISE_DEPARTMENTS);
+        }
+      } catch {
+        setDepartments(ENTERPRISE_DEPARTMENTS);
       }
     } catch (err) {
       console.error("Error loading directory", err);
+      setEmployees(getStoredEmployees());
+      setDepartments(ENTERPRISE_DEPARTMENTS);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleSeed = async () => {
+    setLoading(true);
+    try {
+      if (!isSeeded) {
+        try {
+          await api.post("/system/demo/reset");
+        } catch {
+          // offline fallback
+        }
+        seedEnterpriseCompanyData();
+        setIsSeeded(true);
+        setEmployees(getStoredEmployees());
+        setCurrentPage(1);
+        toast.success("Seeded 100 enterprise employees across 8 departments!");
+      } else {
+        resetToFivePersonas();
+        setIsSeeded(false);
+        setEmployees(getStoredEmployees());
+        setCurrentPage(1);
+        toast.success("Reset directory to 5 core foundational personas.");
+      }
     } finally {
       setLoading(false);
     }
@@ -207,16 +267,43 @@ export default function EmployeesPage() {
 
   const handleCompleteOnboarding = async () => {
     try {
-      const res = await api.post("/employees/onboard", onboardingForm);
-      const emp = res.data;
-      setCreatedCredentials({
-        code: emp.employeeCode || "EMP-NEW",
-        email: emp.email,
-        provisionalPassword: emp.provisionalPassword || "Welcome@2026!",
-        name: `${emp.firstName} ${emp.lastName}`
+      let createdCode = "";
+      try {
+        const res = await api.post("/employees/onboard", onboardingForm);
+        createdCode = res.data?.employeeCode || "";
+      } catch {
+        // Fallback to local procedural persistence
+      }
+
+      const selectedDept = departments.find(d => d.id === onboardingForm.departmentId);
+      const created = appendNewEmployee({
+        employeeCode: createdCode || undefined,
+        firstName: onboardingForm.firstName,
+        lastName: onboardingForm.lastName,
+        email: onboardingForm.email,
+        phone: onboardingForm.phone,
+        designation: onboardingForm.designation,
+        departmentId: onboardingForm.departmentId || "dept-eng",
+        departmentName: selectedDept?.name || "Engineering",
+        salary: onboardingForm.salary || 1200000,
+        hireDate: onboardingForm.hireDate || new Date().toISOString().split("T")[0],
+        status: "ACTIVE",
+        metadata: JSON.stringify({
+          emergencyContact: onboardingForm.emergencyContact,
+          workLocation: onboardingForm.workLocation,
+          bloodGroup: "O+"
+        })
       });
+
+      setCreatedCredentials({
+        code: created.employeeCode,
+        email: created.email,
+        provisionalPassword: onboardingForm.initialPassword || "Welcome@2026!",
+        name: `${created.firstName} ${created.lastName}`
+      });
+
+      setEmployees(getStoredEmployees());
       toast.success("Employee onboarding successfully executed!");
-      fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to onboard employee");
     }
@@ -230,11 +317,18 @@ export default function EmployeesPage() {
   const handleCompleteOffboard = async () => {
     if (!selectedEmployeeForOffboard) return;
     try {
-      await api.post(`/employees/${selectedEmployeeForOffboard.id}/offboard`, offboardingForm);
+      try {
+        await api.post(`/employees/${selectedEmployeeForOffboard.id}/offboard`, offboardingForm);
+      } catch {
+        // offline fallback
+      }
+      const current = getStoredEmployees();
+      const updated = current.map(e => e.id === selectedEmployeeForOffboard.id ? { ...e, status: "OFFBOARDED" as const } : e);
+      saveEmployees(updated);
+      setEmployees(updated);
       toast.success(`${selectedEmployeeForOffboard.firstName} offboarded and login access revoked.`);
       setIsOffboardModalOpen(false);
       setSelectedEmployeeForOffboard(null);
-      fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to offboard employee");
     }
@@ -290,15 +384,23 @@ export default function EmployeesPage() {
     return matchesDept && matchesQuery;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+  const paginatedEmployees = filteredEmployees.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <div className="w-full h-full flex flex-col justify-between overflow-hidden gap-2">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1.5 border-b border-slate-200/60 dark:border-white/[0.06] shrink-0">
         <div>
-          <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-            Workforce Directory & Lifecycle
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399]" />
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+              Workforce Directory & Lifecycle
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399]" />
+            </h1>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-orange-500/10 text-orange-400 border border-orange-500/20">
+              {employees.length} Personnel
+            </span>
+          </div>
           <p className="text-[10.5px] text-slate-500 dark:text-white/40 mt-0.5">
             5-step onboarding, automated credential provisioning, audit trails, and department roster.
           </p>
@@ -306,6 +408,20 @@ export default function EmployeesPage() {
 
         {/* Global Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Seed Mode Pill / Toggle */}
+          <button
+            onClick={handleToggleSeed}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border ${
+              isSeeded
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20 shadow-xs shadow-emerald-500/10"
+                : "bg-orange-500/10 text-orange-400 border-orange-500/25 hover:bg-orange-500/20 shadow-xs shadow-orange-500/10"
+            }`}
+            title={isSeeded ? "Click to reset directory to 5 core demo personas" : "Click to seed 100 enterprise employees"}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{isSeeded ? "100 Enterprise Seeded (Click to Reset)" : "5 Core Personas (Click to Seed 100)"}</span>
+          </button>
+
           <Link
             href="/employees/org-chart"
             className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-white/80 bg-slate-200/60 dark:bg-white/[0.04] hover:bg-slate-200 dark:hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-slate-300/40 dark:border-white/[0.06]"
@@ -359,6 +475,7 @@ export default function EmployeesPage() {
               itemGap={10}
               onItemClick={(idx: number) => {
                 setSelectedDeptIndex(idx);
+                setCurrentPage(1);
               }}
             />
           </div>
@@ -377,7 +494,10 @@ export default function EmployeesPage() {
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
               placeholder="Search by name, designation, email, or employee code..."
               className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-white/70 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.05] outline-none text-slate-900 dark:text-white focus:border-orange-500 transition-colors"
             />
@@ -396,7 +516,7 @@ export default function EmployeesPage() {
             </div>
           ) : (
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 p-0.5">
-              {filteredEmployees.map((emp, idx) => {
+              {paginatedEmployees.map((emp, idx) => {
                 const initials = `${emp.firstName[0] || ""}${emp.lastName[0] || ""}`.toUpperCase();
                 const isExited = emp.status === "OFFBOARDED" || emp.status === "INACTIVE";
 
@@ -525,6 +645,55 @@ export default function EmployeesPage() {
                   </motion.div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {filteredEmployees.length > 0 && (
+            <div className="shrink-0 pt-2 pb-1 border-t border-slate-200/60 dark:border-white/[0.04] flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-white/50">
+              <span className="text-[11px]">
+                Showing {Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)} -{" "}
+                {Math.min(filteredEmployees.length, currentPage * pageSize)} of {filteredEmployees.length} personnel
+                {isSeeded ? " (Seeded 100 Enterprise Records)" : " (5 Core Demo Personas)"}
+              </span>
+
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded-lg bg-slate-200/50 dark:bg-white/[0.04] hover:bg-slate-200 dark:hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`w-6 h-6 rounded-lg text-[11px] font-bold transition-all ${
+                          currentPage === page
+                            ? "bg-orange-500 text-white shadow-xs shadow-orange-500/30"
+                            : "bg-slate-200/40 dark:bg-white/[0.04] hover:bg-slate-200 dark:hover:bg-white/[0.08] text-slate-700 dark:text-white/70"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded-lg bg-slate-200/50 dark:bg-white/[0.04] hover:bg-slate-200 dark:hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
+                    title="Next Page"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

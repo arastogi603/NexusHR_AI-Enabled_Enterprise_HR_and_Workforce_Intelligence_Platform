@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import LiquidCarveButton from "@/components/ui/LiquidCarveButton";
+import { getStoredEmployees, generateTodayAttendance } from "@/lib/demo-data-generator";
 
 interface AttendanceRecord {
   id?: string;
@@ -112,15 +113,23 @@ export default function AttendancePage() {
     }
 
     if (isAdminOrManager) {
+      const emps = getStoredEmployees();
+      const generatedRoster = generateTodayAttendance(emps).map(a => ({
+        id: a.id,
+        employeeName: a.employeeName,
+        status: a.status,
+        clockIn: a.clockIn || "--:--"
+      }));
+
       try {
         const { data } = await api.get("/attendance/my-team");
-        setTeamAttendance(Array.isArray(data) ? data : data ? [data] : []);
+        if (Array.isArray(data) && data.length > 0) {
+          setTeamAttendance(data);
+        } else {
+          setTeamAttendance(generatedRoster);
+        }
       } catch {
-        setTeamAttendance([
-          { id: "t1", employeeName: "Aditi Sharma", status: "PRESENT", clockIn: "09:15 AM" },
-          { id: "t2", employeeName: "Rahul Verma", status: "PRESENT", clockIn: "08:55 AM" },
-          { id: "t3", employeeName: "Priya Nair", status: "PRESENT", clockIn: "09:10 AM" }
-        ]);
+        setTeamAttendance(generatedRoster);
       }
     }
   };

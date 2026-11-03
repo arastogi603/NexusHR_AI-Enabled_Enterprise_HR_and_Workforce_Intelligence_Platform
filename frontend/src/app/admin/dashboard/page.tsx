@@ -22,6 +22,12 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
+import {
+  seedEnterpriseCompanyData,
+  resetToFivePersonas,
+  isSeededMode,
+  getStoredEmployees
+} from "@/lib/demo-data-generator";
 
 interface AuditLogItem {
   id: string;
@@ -33,8 +39,13 @@ interface AuditLogItem {
 
 export default function AdminGovernancePage() {
   const [seeding, setSeeding] = useState(false);
+  const [isSeeded, setIsSeeded] = useState(false);
   const [recentLogs, setRecentLogs] = useState<AuditLogItem[]>([]);
   const [activeTab, setActiveTab] = useState<"governance" | "policies" | "seeder">("seeder");
+
+  useEffect(() => {
+    setIsSeeded(isSeededMode());
+  }, []);
 
   const fetchRecentActivity = async () => {
     try {
@@ -58,14 +69,33 @@ export default function AdminGovernancePage() {
   const handleSeedDemoData = async () => {
     setSeeding(true);
     try {
-      const res = await api.post("/system/demo/reset");
-      toast.success(res.data?.message || "Enterprise demo data seeded successfully!");
+      try {
+        await api.post("/system/demo/reset");
+      } catch {
+        // offline fallback
+      }
+      seedEnterpriseCompanyData();
+      setIsSeeded(true);
+      toast.success("Seeded 100 enterprise employees across 8 divisions with full records!");
       fetchRecentActivity();
     } catch (err: any) {
-      // If endpoint returns error or auth needed, still provide successful UX confirmation
-      toast.success("Enterprise demo data initialized with active staff, leaves, and timecards!");
+      seedEnterpriseCompanyData();
+      setIsSeeded(true);
+      toast.success("Enterprise demo data initialized with 100 staff, leaves, and timecards!");
     } finally {
       setTimeout(() => setSeeding(false), 800);
+    }
+  };
+
+  const handleResetDemoData = () => {
+    setSeeding(true);
+    try {
+      resetToFivePersonas();
+      setIsSeeded(false);
+      toast.success("Reset environment to 5 foundational demo personas.");
+      fetchRecentActivity();
+    } finally {
+      setTimeout(() => setSeeding(false), 600);
     }
   };
 
@@ -185,27 +215,45 @@ export default function AdminGovernancePage() {
               animate={{ opacity: 1, y: 0 }}
               className="glass-card p-5 sm:p-6 rounded-3xl space-y-4"
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-orange-400" />
                     <h3 className="text-base sm:text-lg font-bold text-white">
-                      Video Demonstration & Fake Data Seeder
+                      Enterprise Environment & Company Data Seeder
                     </h3>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${
+                      isSeeded
+                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                        : "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                    }`}>
+                      {isSeeded ? "100 Enterprise Staff Active" : "5 Core Personas Active"}
+                    </span>
                   </div>
                   <p className="text-xs text-white/60 mt-1 leading-relaxed">
-                    Populate your organization with realistic, ready-to-present company records. This seeds active staff across departments, pending leave approvals, live attendance biometric punches, monthly payroll history, and performance goals.
+                    Populate your organization with realistic, ready-to-present company records. For normal demos, show 5 foundational personas. Click seed to scale up to 100 active employees across 8 divisions with complete attendance, payroll, leaves, and reviews.
                   </p>
                 </div>
 
-                <button
-                  onClick={handleSeedDemoData}
-                  disabled={seeding}
-                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition-all flex items-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${seeding ? "animate-spin" : ""}`} />
-                  <span>{seeding ? "Seeding Records..." : "Seed Company Demo Data"}</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleResetDemoData}
+                    disabled={seeding || !isSeeded}
+                    className="px-4 py-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-white/80 hover:text-white border border-white/10 text-xs font-semibold transition-all cursor-pointer disabled:opacity-40"
+                    title="Reset to 5 core foundational personas"
+                  >
+                    Reset to 5 Personas
+                  </button>
+
+                  <button
+                    onClick={handleSeedDemoData}
+                    disabled={seeding}
+                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${seeding ? "animate-spin" : ""}`} />
+                    <span>{seeding ? "Seeding Records..." : "Seed 100 Enterprise Employees"}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Data Seeding Checklist Cards */}

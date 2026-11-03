@@ -31,6 +31,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { getStoredEmployees, generatePerformanceReviews } from "@/lib/demo-data-generator";
 
 interface Goal {
   id: string;
@@ -218,6 +219,15 @@ export default function PerformancePage() {
   // Fetch employees list
   useEffect(() => {
     const fetchEmployees = async () => {
+      const stored = getStoredEmployees().map(e => ({
+        id: e.id,
+        firstName: e.firstName,
+        lastName: e.lastName,
+        designation: e.designation,
+        departmentName: e.departmentName,
+        email: e.email
+      }));
+
       try {
         const { data } = await api.get("/employees?size=50");
         const list = data.content || [];
@@ -225,15 +235,13 @@ export default function PerformancePage() {
           setEmployees(list);
           const myProfile = list.find((e: any) => e.email === user?.email);
           setSelectedEmployeeId(myProfile ? myProfile.id : list[0].id);
+        } else {
+          setEmployees(stored);
+          setSelectedEmployeeId(stored[0]?.id || "emp-nx-0003");
         }
       } catch (err) {
-        // Fallback default demo profiles
-        setEmployees([
-          { id: "e1", firstName: "Aditi", lastName: "Sharma", designation: "Senior Software Developer", departmentName: "Engineering", email: "employee@nexushr.demo" },
-          { id: "e2", firstName: "Vikram", lastName: "Patel", designation: "Engineering Manager", departmentName: "Engineering", email: "manager@nexushr.demo" },
-          { id: "e3", firstName: "Priya", lastName: "Nair", designation: "Lead HR Business Partner", departmentName: "Human Resources", email: "hr@nexushr.demo" }
-        ]);
-        setSelectedEmployeeId("e1");
+        setEmployees(stored);
+        setSelectedEmployeeId(stored[0]?.id || "emp-nx-0003");
       }
     };
     fetchEmployees();
@@ -245,6 +253,9 @@ export default function PerformancePage() {
 
     const fetchPerformanceData = async () => {
       try {
+        const stored = getStoredEmployees();
+        const genReviews = generatePerformanceReviews(stored);
+
         const [goalsRes, reviewsRes] = await Promise.allSettled([
           api.get(`/performance/employees/${selectedEmployeeId}/goals`),
           api.get(`/performance/employees/${selectedEmployeeId}/reviews`)
@@ -259,11 +270,12 @@ export default function PerformancePage() {
         if (reviewsRes.status === "fulfilled" && Array.isArray(reviewsRes.value.data) && reviewsRes.value.data.length > 0) {
           setReviews(reviewsRes.value.data);
         } else {
-          setReviews(DEFAULT_REVIEWS);
+          setReviews(genReviews);
         }
       } catch {
+        const stored = getStoredEmployees();
         setGoals(DEFAULT_GOALS);
-        setReviews(DEFAULT_REVIEWS);
+        setReviews(generatePerformanceReviews(stored));
       }
     };
 

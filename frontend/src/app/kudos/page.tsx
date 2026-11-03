@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Award,
@@ -18,6 +18,7 @@ import {
   Smile
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { getStoredEmployees, generateKudosPosts } from "@/lib/demo-data-generator";
 
 interface KudosPost {
   id: string;
@@ -40,44 +41,9 @@ export default function KudosHubPage() {
   const [pointsToSend, setPointsToSend] = useState(50);
   const [kudosNote, setKudosNote] = useState("");
 
-  const [kudosFeed, setKudosFeed] = useState<KudosPost[]>([
-    {
-      id: "kudos-1",
-      senderName: "Vikram Patel",
-      senderRole: "Engineering Manager",
-      receiverName: "Aditi Sharma",
-      receiverRole: "Senior Software Developer",
-      badge: "Innovation",
-      points: 100,
-      message: "Incredible work reducing the monolith gateway API latency by 45%! The whole platform feels blazing fast.",
-      likes: 8,
-      timeAgo: "2 hours ago",
-    },
-    {
-      id: "kudos-2",
-      senderName: "Priya Nair",
-      senderRole: "Lead HR Business Partner",
-      receiverName: "Rahul Verma",
-      receiverRole: "DevOps & Systems Architect",
-      badge: "Execution",
-      points: 75,
-      message: "Seamless execution setting up the automated statutory tax verification engine and container orchestration.",
-      likes: 12,
-      timeAgo: "Yesterday",
-    },
-    {
-      id: "kudos-3",
-      senderName: "Aditi Sharma",
-      senderRole: "Senior Software Developer",
-      receiverName: "Priya Nair",
-      receiverRole: "Lead HR Business Partner",
-      badge: "Collaboration",
-      points: 50,
-      message: "Huge thank you for the smooth onboarding briefing and explaining the Section 115BAC deductions so clearly!",
-      likes: 6,
-      timeAgo: "2 days ago",
-    },
-  ]);
+  const [kudosFeed, setKudosFeed] = useState<KudosPost[]>(() => {
+    return generateKudosPosts(getStoredEmployees());
+  });
 
   const handleLike = (id: string) => {
     setKudosFeed((prev) =>
