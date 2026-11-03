@@ -38,7 +38,8 @@ interface Payslip {
   employeeName: string;
   departmentName?: string;
   designation?: string;
-  ctc: number;
+  ctc?: number;
+  annualCtc?: number;
   basicSalary: number;
   hra: number;
   specialAllowance: number;
@@ -141,6 +142,78 @@ export default function PayrollPage() {
     }).format(val);
   };
 
+  // Helper to extract non-zero CTC with fallback to grossPay * 12 or standard base
+  const getAnnualCtc = (slip?: Payslip | null): number => {
+    if (!slip) return 0;
+    const rawCtc = (slip as any).annualCtc ?? slip.ctc;
+    if (rawCtc !== undefined && rawCtc !== null) {
+      const num = Number(rawCtc);
+      if (!isNaN(num) && num > 0) return num;
+    }
+    const rawGross = (slip as any).grossPay ?? (slip as any).grossEarnings;
+    if (rawGross !== undefined && rawGross !== null) {
+      const num = Number(rawGross);
+      if (!isNaN(num) && num > 0) return Math.round(num * 12);
+    }
+    return 1200000;
+  };
+
+  const normalizePayslip = (slip: any): Payslip => {
+    const annualCtc = getAnnualCtc(slip);
+    const basicSalary = Number(slip.basicSalary ?? slip.basic) || Math.round((annualCtc * 0.5) / 12);
+    const hra = Number(slip.hra) || Math.round((annualCtc * 0.25) / 12);
+    const transportAllowance = Number(slip.transportAllowance) || Math.round((annualCtc * 0.05) / 12);
+    const specialAllowance = Number(slip.specialAllowance) || Math.max(0, Math.round(annualCtc / 12) - (basicSalary + hra + transportAllowance));
+    const grossPay = Number(slip.grossPay ?? slip.grossEarnings) || (basicSalary + hra + transportAllowance + specialAllowance);
+    const pfDeduction = Number(slip.pfDeduction) || 0;
+    const esiDeduction = Number(slip.esiDeduction) || 0;
+    const ptDeduction = Number(slip.ptDeduction) || 200;
+    const tds = Number(slip.tds ?? slip.tdsTax) || 0;
+    const lopDeduction = Number(slip.lopDeduction) || 0;
+    const totalDeductions = Number(slip.totalDeductions) || (pfDeduction + esiDeduction + ptDeduction + tds + lopDeduction);
+    const netPay = Number(slip.netPay ?? slip.netSalary) || (grossPay - totalDeductions);
+
+    return {
+      id: String(slip.id || `ps-${slip.payrollRunId || "run"}-${slip.employeeCode || "emp"}`),
+      payrollRunId: String(slip.payrollRunId || ""),
+      employeeId: String(slip.employeeId || ""),
+      employeeCode: slip.employeeCode || "NX-0000",
+      employeeName: slip.employeeName || "Employee",
+      departmentName: slip.departmentName || "General",
+      designation: slip.designation || "Staff",
+      ctc: annualCtc,
+      annualCtc,
+      basicSalary,
+      hra,
+      specialAllowance,
+      transportAllowance,
+      grossPay,
+      pfDeduction,
+      esiDeduction,
+      ptDeduction,
+      tds,
+      lopDeduction,
+      totalDeductions,
+      netPay,
+      paidDays: Number(slip.paidDays) || 30,
+      lopDays: Number(slip.lopDays) || 0,
+      month: Number(slip.month) || selectedMonth,
+      year: Number(slip.year) || selectedYear,
+      published: slip.published !== undefined ? Boolean(slip.published) : slip.status === "PUBLISHED"
+    };
+  };
+
+  const normalizeRun = (run: any): PayrollRun => {
+    if (!run) return run;
+    return {
+      ...run,
+      totalGross: Number(run.totalGross) || 0,
+      totalNet: Number(run.totalNet) || 0,
+      totalDeductions: Number(run.totalDeductions) || 0,
+      payslips: Array.isArray(run.payslips) ? run.payslips.map(normalizePayslip) : [],
+    };
+  };
+
   // Fetch initial data based on roles
   useEffect(() => {
     if (canManagePayroll) {
@@ -191,25 +264,25 @@ export default function PayrollPage() {
     try {
       const { data } = await api.get("/payroll/runs");
       if (Array.isArray(data) && data.length > 0) {
-        setAllRuns(data);
+        setAllRuns(data.map(normalizeRun));
         const existing = data.find((r: PayrollRun) => r.month === selectedMonth && r.year === selectedYear);
         if (existing) {
           try {
             const runDetail = await api.get(`/payroll/runs/${existing.id}`);
-            setActiveRun(runDetail.data);
+            setActiveRun(normalizeRun(runDetail.data));
           } catch {
-            setActiveRun(octRun as any);
+            setActiveRun(normalizeRun(octRun as any));
           }
         } else {
-          setActiveRun(octRun as any);
+          setActiveRun(normalizeRun(octRun as any));
         }
       } else {
-        setAllRuns([octRun as any, sepRun as any]);
-        setActiveRun(octRun as any);
+        setAllRuns([normalizeRun(octRun as any), normalizeRun(sepRun as any)]);
+        setActiveRun(normalizeRun(octRun as any));
       }
     } catch {
-      setAllRuns([octRun as any, sepRun as any]);
-      setActiveRun(octRun as any);
+      setAllRuns([normalizeRun(octRun as any), normalizeRun(sepRun as any)]);
+      setActiveRun(normalizeRun(octRun as any));
     }
   };
 
@@ -226,12 +299,12 @@ export default function PayrollPage() {
     try {
       const { data } = await api.get("/payroll/payslips/my");
       if (Array.isArray(data) && data.length > 0) {
-        setMyPayslips(data);
+        setMyPayslips(data.map(normalizePayslip));
       } else {
-        setMyPayslips(personalPayslips);
+        setMyPayslips(personalPayslips.map(normalizePayslip));
       }
     } catch {
-      setMyPayslips(personalPayslips);
+      setMyPayslips(personalPayslips.map(normalizePayslip));
     }
   };
 
@@ -244,9 +317,9 @@ export default function PayrollPage() {
 
       try {
         const { data } = await api.post(`/payroll/run?month=${selectedMonth}&year=${selectedYear}`);
-        setActiveRun(data);
+        setActiveRun(normalizeRun(data));
       } catch {
-        setActiveRun(localRun as any);
+        setActiveRun(normalizeRun(localRun as any));
       }
 
       toast.success(`Statutory Payroll for ${MONTH_NAMES[selectedMonth - 1]} ${selectedYear} completed!`);
@@ -265,7 +338,7 @@ export default function PayrollPage() {
     setPublishing(true);
     try {
       const { data } = await api.post(`/payroll/${activeRun.id}/publish`);
-      setActiveRun(data);
+      setActiveRun(normalizeRun(data));
       toast.success("Payroll run published & sealed! Employee payslips are now live.");
       loadAllRuns();
       loadMyPayslips();
@@ -587,7 +660,7 @@ export default function PayrollPage() {
                             {slip.designation || "Staff"}
                           </td>
                           <td className="py-2.5 text-right font-mono text-slate-600 dark:text-white/70">
-                            {formatINR(slip.ctc)}
+                            {formatINR(getAnnualCtc(slip))}
                           </td>
                           <td className="py-2.5 text-right font-mono font-semibold text-amber-500">
                             {formatINR(slip.grossPay)}
@@ -689,7 +762,7 @@ export default function PayrollPage() {
                             setSelectedMonth(r.month);
                             setSelectedYear(r.year);
                             const res = await api.get(`/payroll/runs/${r.id}`);
-                            setActiveRun(res.data);
+                            setActiveRun(normalizeRun(res.data));
                             setActiveTab("engine");
                           }}
                           className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-500 text-[10px] font-bold border border-amber-500/30 transition-all inline-flex items-center gap-1"
@@ -992,7 +1065,7 @@ export default function PayrollPage() {
                   </div>
                   <div>
                     <span className="text-slate-500 dark:text-white/40 text-[10px] uppercase">Annual CTC</span>
-                    <p className="font-bold text-amber-500 text-sm">{formatINR(selectedPayslip.ctc)}</p>
+                    <p className="font-bold text-amber-500 text-sm">{formatINR(getAnnualCtc(selectedPayslip))}</p>
                   </div>
                 </div>
 

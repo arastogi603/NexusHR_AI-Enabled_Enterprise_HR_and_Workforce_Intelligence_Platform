@@ -53,6 +53,7 @@ export interface Payslip {
   departmentName: string;
   designation: string;
   ctc: number;
+  annualCtc?: number;
   basicSalary: number;
   hra: number;
   specialAllowance: number;
@@ -535,6 +536,7 @@ export function calculatePayslipForEmployee(
     departmentName: emp.departmentName || "General",
     designation: emp.designation,
     ctc,
+    annualCtc: ctc,
     basicSalary,
     hra,
     specialAllowance,
