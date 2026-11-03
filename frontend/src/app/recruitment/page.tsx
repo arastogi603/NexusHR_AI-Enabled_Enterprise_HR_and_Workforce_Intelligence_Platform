@@ -288,7 +288,7 @@ export default function RecruitmentPage() {
       minExperience: Number(newJobMinExp) || 2,
       totalOpenings: Number(newJobOpenings) || 1,
       filled: 0,
-      description: newJobDesc.trim() || `Exciting opportunity for a ${newJobTitle.trim()} to build cutting-edge solutions.`,
+      description: newJobDesc.trim() || `Opportunity for a ${newJobTitle.trim()} to design and build scalable services.`,
       createdAt: new Date().toISOString().split("T")[0],
     };
 

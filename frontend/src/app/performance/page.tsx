@@ -134,7 +134,7 @@ const DEFAULT_REVIEWS: Review[] = [
     id: "r-1",
     employeeId: "demo-emp",
     reviewerName: "Vikram Patel (Engineering Manager)",
-    reviewPeriod: "Q3 2026 Comprehensive",
+    reviewPeriod: "Q3 2026 Annual Cycle",
     score: 4.9,
     feedback: "Exceptional technical execution across distributed event pipelines and security compliance. Delivered Argon2 authentication migration 2 weeks ahead of schedule with zero production regression.",
     status: "COMPLETED"
@@ -1260,7 +1260,7 @@ export default function PerformancePage() {
                   required
                   value={newReview.reviewPeriod}
                   onChange={(e) => setNewReview({ ...newReview, reviewPeriod: e.target.value })}
-                  placeholder="e.g. Q4 2026 Comprehensive"
+                  placeholder="e.g. Q4 2026 Annual Cycle"
                   className="w-full p-2 rounded-xl bg-slate-100 dark:bg-white/[0.04] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs outline-none"
                 />
               </div>

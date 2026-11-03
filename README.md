@@ -8,7 +8,7 @@
 
 ## 📌 Executive Summary
 
-**NexusHR** is a comprehensive, production-grade enterprise Human Resources & Workforce Intelligence platform designed for mid-to-large corporate organizations. It seamlessly manages the complete employee lifecycle—from recruitment ATS semantic screening with real PDF stream parsing and dynamic job capacity tracking to 5-step digital onboarding, biometric GPS geofenced attendance, automated Indian statutory payroll (Section 115BAC New Tax Regime) with OCR tax validation, quarterly OKR competency genomes, and peer-to-peer WebRTC video conferences with cross-tab incognito signaling.
+**NexusHR** is a production-grade enterprise Human Resources and Workforce Intelligence platform built for mid-to-large corporate organizations. It unifies the employee lifecycle into a single system: real-stream PDF resume screening and dynamic capacity tracking, 5-stage digital onboarding, biometric GPS geofenced attendance, Indian statutory payroll (Section 115BAC New Tax Regime), quarterly OKR evaluations, and browser-direct WebRTC video conferencing with cross-tab incognito signaling.
 
 ---
 
@@ -106,7 +106,7 @@ NexusHR Platform Capabilities
 │   ├── Real PDF & DOCX Binary Stream Parser (Node zlib FlateDecode decompressor)
 │   ├── Deep Text Operator Extractor (Tj, TJ, Hex-encoded strings)
 │   ├── Real Identity Extraction (Candidate Name, Verified Email, Phone Number, Tenure)
-│   ├── 120+ Comprehensive Technical Skill Taxonomy Cross-Referencing
+│   ├── 120+ Enterprise Technical Skill Taxonomy Cross-Referencing
 │   ├── Dynamic Company Job Openings Management (+ Post Job, Delete Job, Edit Vacancies)
 │   ├── Real-Time Hiring Capacity Tracker (Open Slots vs 100% FILLED)
 │   ├── Automatic Best-Fit Role Matching across all Active Company Openings
@@ -194,7 +194,7 @@ NexusHR Platform Capabilities
   - ₹12,00,001 to ₹15,00,000: 20%
   - Above ₹15,00,000: 30%
   - Standard Deduction: ₹75,000 under Section 16(ia).
-- **Comprehensive Deduction Formulas**:
+- **Statutory Deduction Formulas**:
   - Employee Provident Fund (PF): 12% statutory deduction.
   - Employee State Insurance (ESIC): 0.75% contribution.
   - Professional Tax (PT): State-mandated slab deduction.

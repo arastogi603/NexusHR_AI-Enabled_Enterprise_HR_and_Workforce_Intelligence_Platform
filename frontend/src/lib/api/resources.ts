@@ -130,7 +130,7 @@ const mockItems: Record<string, ResourceItem[]> = {
     {
       id: "item-c1",
       title: "OWASP Top 10 Web Vulnerabilities",
-      description: "Comprehensive overview of critical security risks to web applications and defense mechanisms.",
+      description: "Detailed analysis of critical security risks to web applications and mitigation patterns.",
       techStack: ["Security", "OWASP", "Penetration Testing"],
       url: "https://owasp.org/www-project-top-ten/",
       publishedBy: { id: "1", name: "Cyber Sec Club" }

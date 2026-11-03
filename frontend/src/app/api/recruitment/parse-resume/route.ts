@@ -9,7 +9,7 @@ interface JobOpeningData {
   minExperience: number;
 }
 
-// 120+ Comprehensive Enterprise & Tech Skills Dictionary
+// 120+ Enterprise & Tech Skills Taxonomy
 const COMPREHENSIVE_SKILLS_DICTIONARY = [
   // Backend & Languages
   "Java", "Spring Boot", "Spring Security", "Spring Cloud", "Hibernate", "JPA",
