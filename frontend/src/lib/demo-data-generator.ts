@@ -1033,3 +1033,4 @@ export function getLiveDashboardMetrics(employeesList?: Employee[]) {
     pendingLeavesCount: isSeededMode() ? 10 : 2
   };
 }
+
